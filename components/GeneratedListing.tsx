@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import type { Listing } from '../types';
 import { listOnEbay } from '../services/ebayService';
 import { postToX } from '../services/twitterService';
-import { DeleteIcon, InfoIcon, LinkIcon } from './icons';
+import { DeleteIcon, InfoIcon, LinkIcon, MaximizeIcon } from './icons';
+import { ImageZoomModal } from './ImageZoomModal';
 
 interface ApiKeys {
   gemini: string;
@@ -47,6 +48,7 @@ const TabButton: React.FC<{
 export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const formattedPrice = useMemo(() => new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -72,6 +74,7 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
   };
 
   return (
+    <>
     <div className="border border-slate-200 rounded-lg shadow-sm transition-all hover:shadow-md bg-white">
         <div className="p-4 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
             <div className="flex justify-between items-start">
@@ -113,6 +116,30 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
             <div className="animate-fade-in">
                 {activeTab === 'general' && (
                 <div className="space-y-4">
+                    {listing.images && listing.images.length > 0 && (
+                      <div>
+                        <h4 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">Product Images</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
+                            {listing.images.map((image, index) => (
+                                <div key={index} className="relative aspect-square group">
+                                    <img
+                                    src={`data:${image.type};base64,${image.data}`}
+                                    alt={`Product image ${index + 1}`}
+                                    className="w-full h-full object-cover rounded-lg shadow-md"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setZoomedImage(`data:${image.type};base64,${image.data}`)}
+                                        className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all rounded-lg flex items-center justify-center"
+                                        aria-label={`Zoom image ${index + 1}`}
+                                    >
+                                        <MaximizeIcon className="h-7 w-7 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                     <div>
                         <h4 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">Description</h4>
                         <div className="prose prose-slate max-w-none text-slate-600 space-y-4">
@@ -139,8 +166,15 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                                 </h5>
                                 <ul className="space-y-2">
                                     {listing.priceSuggestion.sources.map((source, i) => (
-                                        <li key={i}>
-                                            <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 hover:underline break-all">
+                                        <li key={i} className="flex items-start text-sm">
+                                            <LinkIcon className="h-4 w-4 text-slate-400 mr-2 flex-shrink-0 mt-1" />
+                                            <a 
+                                                href={source.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-indigo-600 hover:underline break-words" 
+                                                title={source.url}
+                                            >
                                                 {source.title || "View Source"}
                                             </a>
                                         </li>
@@ -194,5 +228,12 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
         </div>
       )}
     </div>
+    {zoomedImage && (
+        <ImageZoomModal 
+            src={zoomedImage} 
+            onClose={() => setZoomedImage(null)} 
+        />
+    )}
+    </>
   );
 };

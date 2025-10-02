@@ -15,6 +15,10 @@ export interface Listing {
     }[];
   };
   category: string;
+  images: {
+    data: string; // base64 encoded image
+    type: string; // e.g., 'image/jpeg'
+  }[];
   ebay?: {
     title: string;
     descriptionHtml: string;

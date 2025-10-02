@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { ListingHistory } from './components/ListingHistory';
-import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
+import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon, InfoIcon } from './components/icons';
 import { generateListing, verifyGeminiApiKey } from './services/geminiService';
 import { verifyEbayToken } from './services/ebayService';
 import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
+import { fileToBase64 } from './utils/fileUtils';
 
 interface ApiKeys {
   gemini: string;
@@ -18,6 +19,12 @@ interface ApiKeys {
     accessSecret: string;
   };
 }
+
+const defaultApiKeys: ApiKeys = {
+  gemini: '',
+  ebay: '',
+  twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
+};
 
 const App: React.FC = () => {
   // Form State
@@ -33,11 +40,8 @@ const App: React.FC = () => {
   
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [apiKeys, setApiKeys] = useState<ApiKeys>({
-    gemini: '',
-    ebay: '',
-    twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
-  });
+  const [apiKeys, setApiKeys] = useState<ApiKeys>(defaultApiKeys);
+  const isInitialMount = useRef(true);
 
   // History Management State
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,20 +50,45 @@ const App: React.FC = () => {
 
   // Load initial state from localStorage
   useEffect(() => {
-    const savedKeys = localStorage.getItem('apiKeys');
-    if (savedKeys) {
-      setApiKeys(JSON.parse(savedKeys));
+    try {
+      const savedKeys = localStorage.getItem('apiKeys');
+      if (savedKeys) {
+        const parsedKeys = JSON.parse(savedKeys);
+        // Merge with defaults to prevent errors if structure is outdated
+        setApiKeys(prev => ({
+            ...prev,
+            ...parsedKeys,
+            twitter: {
+                ...prev.twitter,
+                ...(parsedKeys.twitter || {})
+            }
+        }));
+      }
+    } catch (e) {
+      console.error("Failed to parse API keys from localStorage", e);
+      localStorage.removeItem('apiKeys');
     }
-    const savedListings = localStorage.getItem('listings');
-    if (savedListings) {
-      setListings(JSON.parse(savedListings));
+    
+    try {
+      const savedListings = localStorage.getItem('listings');
+      if (savedListings) {
+        setListings(JSON.parse(savedListings));
+      }
+    } catch (e) {
+      console.error("Failed to parse listings from localStorage", e);
+      localStorage.removeItem('listings');
     }
   }, []);
 
-  // Persist listings to localStorage
+  // Persist state to localStorage
   useEffect(() => {
-    localStorage.setItem('listings', JSON.stringify(listings));
-  }, [listings]);
+    if (isInitialMount.current) {
+        isInitialMount.current = false;
+    } else {
+        localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
+        localStorage.setItem('listings', JSON.stringify(listings));
+    }
+  }, [apiKeys, listings]);
 
   const isGeminiConfigured = !!apiKeys.gemini;
   const isEbayConfigured = !!apiKeys.ebay;
@@ -118,8 +147,16 @@ const App: React.FC = () => {
     setError(null);
     
     try {
+      const imagePayload = await Promise.all(images.map(async (file) => ({
+        data: await fileToBase64(file),
+        type: file.type,
+      })));
+
       const generatedData = await generateListing(images, notes, apiKeys.gemini, isEbayConfigured, isTwitterConfigured);
-      setVariations(generatedData);
+      
+      const variationsWithImages = generatedData.map(v => ({ ...v, images: imagePayload }));
+      
+      setVariations(variationsWithImages);
       setImages([]);
       setNotes('');
     } catch (err) {
@@ -300,7 +337,6 @@ const App: React.FC = () => {
           onClose={() => setIsSettingsOpen(false)} 
           onSave={(newKeys) => {
             setApiKeys(newKeys);
-            localStorage.setItem('apiKeys', JSON.stringify(newKeys));
             setIsSettingsOpen(false);
           }}
         />
@@ -392,12 +428,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
         <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
 
           {/* Gemini Settings */}
-          <div className="space-y-2">
+          <div className="space-y-4">
             <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
-            <p className="text-sm text-slate-500">
-              Required for the application to generate listings. Get your key from Google AI Studio. 
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Get API Key</a>
-            </p>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+                <div className="flex">
+                    <div className="flex-shrink-0">
+                        <InfoIcon className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div className="ml-3">
+                        <p className="text-sm text-blue-800">
+                            A Gemini API key is **required** to generate listings. You can get your free key from Google AI Studio.
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="font-semibold underline hover:text-blue-600 ml-1">
+                                Get API Key &rarr;
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
             <div>
                 <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
                  <div className="flex items-center space-x-2 mt-1">
@@ -410,12 +457,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
           </div>
 
           {/* eBay Settings */}
-          <div className="space-y-2">
+          <div className="space-y-4">
             <h3 className="text-lg font-semibold text-slate-900">eBay</h3>
-             <p className="text-sm text-slate-500">
-              Optional. Required to enable the "List on eBay" feature. Follow the instructions to generate a User Access Token.
-              <a href="https://developer.ebay.com/api-docs/static/oauth-tokens.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Learn More</a>
-            </p>
+             <div className="bg-slate-50 border-l-4 border-slate-400 p-4 rounded-r-lg">
+                <div className="flex">
+                    <div className="flex-shrink-0">
+                        <InfoIcon className="h-5 w-5 text-slate-500" />
+                    </div>
+                    <div className="ml-3">
+                        <p className="text-sm text-slate-700">
+                            **Optional.** Required to enable the "List on eBay" feature. Follow eBay's instructions to generate a User Access Token.
+                            <a href="https://developer.ebay.com/api-docs/static/oauth-tokens.html" target="_blank" rel="noopener noreferrer" className="font-semibold underline text-slate-800 hover:text-slate-600 ml-1">
+                                Learn More &rarr;
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
             <div>
                 <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
                  <div className="flex items-center space-x-2 mt-1">
@@ -428,12 +486,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
           </div>
 
           {/* Twitter Settings */}
-          <div className="space-y-2">
+          <div className="space-y-4">
             <h3 className="text-lg font-semibold text-slate-900">X (Twitter)</h3>
-            <p className="text-sm text-slate-500">
-              Optional. Required to enable the "Post to X" feature. Create a project and app in the developer portal to get your four keys.
-              <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Go to Dashboard</a>
-            </p>
+            <div className="bg-slate-50 border-l-4 border-slate-400 p-4 rounded-r-lg">
+                <div className="flex">
+                    <div className="flex-shrink-0">
+                        <InfoIcon className="h-5 w-5 text-slate-500" />
+                    </div>
+                    <div className="ml-3">
+                        <p className="text-sm text-slate-700">
+                            **Optional.** Required to enable the "Post to X" feature. Get your four keys from the X developer portal dashboard.
+                            <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="font-semibold underline text-slate-800 hover:text-slate-600 ml-1">
+                                Go to Dashboard &rarr;
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
                     <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
