@@ -26,8 +26,7 @@ function escapeCsvCell(cell: any): string {
 
 function convertToCsv(data: Listing[]): string {
     const headers = [
-        'ID', 'Created At', 'Title', 'Description', 'Selected Price', 'Category', 
-        'Price Suggestion (Quick Sale)', 'Price Suggestion (Market Value)', 'Price Suggestion (Premium)', 'Price Justification',
+        'ID', 'Created At', 'Title', 'Description', 'Price', 'Category', 
         'eBay Title', 'eBay HTML Description', 'Twitter Tweet'
     ];
     
@@ -36,12 +35,8 @@ function convertToCsv(data: Listing[]): string {
         listing.createdAt,
         listing.title,
         listing.description,
-        listing.selectedPrice,
+        listing.price,
         listing.category,
-        listing.priceSuggestion.quickSale,
-        listing.priceSuggestion.marketValue,
-        listing.priceSuggestion.premium,
-        listing.priceSuggestion.justification,
         listing.ebay?.title,
         listing.ebay?.descriptionHtml,
         listing.twitter?.tweet,
@@ -59,38 +54,21 @@ export const exportAsCsv = (data: Listing[], xls = false) => {
 
 // --- PDF Export ---
 export const exportAsPdf = (data: Listing[]) => {
-    const doc = new jsPDF({ orientation: 'landscape' });
+    const doc = new jsPDF();
     
-    const formatCurrency = (price: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
-
     const tableData = data.map(listing => [
         listing.title,
         listing.category,
-        formatCurrency(listing.selectedPrice),
-        listing.priceSuggestion.justification,
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.price),
         new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
     ]);
 
     autoTable(doc, {
-        head: [['Title', 'Category', 'Selected Price', 'Pricing Rationale', 'Date']],
+        head: [['Title', 'Category', 'Price', 'Date']],
         body: tableData,
         didDrawPage: (data) => {
             doc.setFontSize(20);
             doc.text('Marketplace Listings', data.settings.margin.left, 15);
-        },
-        styles: {
-            fontSize: 8,
-            cellPadding: 2,
-        },
-        headStyles: {
-            fillColor: [30, 41, 59], // slate-800
-        },
-        columnStyles: {
-            0: { cellWidth: 50 },
-            1: { cellWidth: 25 },
-            2: { cellWidth: 25 },
-            3: { cellWidth: 'auto' },
-            4: { cellWidth: 25 },
         }
     });
 
@@ -120,12 +98,8 @@ CREATE TABLE listings (
     createdAt TIMESTAMP,
     title TEXT,
     description TEXT,
-    selectedPrice DECIMAL(10, 2),
+    price DECIMAL(10, 2),
     category VARCHAR(255),
-    priceSuggestionQuickSale DECIMAL(10, 2),
-    priceSuggestionMarketValue DECIMAL(10, 2),
-    priceSuggestionPremium DECIMAL(10, 2),
-    priceJustification TEXT,
     ebayTitle TEXT,
     ebayDescriptionHtml TEXT,
     twitterTweet TEXT
@@ -140,20 +114,16 @@ CREATE TABLE listings (
             escapeSqlValue(listing.createdAt),
             escapeSqlValue(listing.title),
             escapeSqlValue(listing.description),
-            escapeSqlValue(listing.selectedPrice),
+            escapeSqlValue(listing.price),
             escapeSqlValue(listing.category),
-            escapeSqlValue(listing.priceSuggestion.quickSale),
-            escapeSqlValue(listing.priceSuggestion.marketValue),
-            escapeSqlValue(listing.priceSuggestion.premium),
-            escapeSqlValue(listing.priceSuggestion.justification),
             escapeSqlValue(listing.ebay?.title),
             escapeSqlValue(listing.ebay?.descriptionHtml),
             escapeSqlValue(listing.twitter?.tweet),
         ].join(', ');
         
-        sqlString += `INSERT INTO listings (id, createdAt, title, description, selectedPrice, category, priceSuggestionQuickSale, priceSuggestionMarketValue, priceSuggestionPremium, priceJustification, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
+        sqlString += `INSERT INTO listings (id, createdAt, title, description, price, category, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
     });
     
-    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-t;' });
+    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-8;' });
     triggerDownload(blob, 'listings.sql');
 };

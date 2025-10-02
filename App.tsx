@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { ListingHistory } from './components/ListingHistory';
-import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
-import { generateListing, verifyGeminiApiKey } from './services/geminiService';
+import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon, SunIcon, MoonIcon } from './components/icons';
+import { generateListing } from './services/geminiService';
 import { verifyEbayToken } from './services/ebayService';
 import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
 
 interface ApiKeys {
-  gemini: string;
   ebay: string;
   twitter: {
     apiKey: string;
@@ -19,6 +18,8 @@ interface ApiKeys {
   };
 }
 
+type Theme = 'light' | 'dark';
+
 const App: React.FC = () => {
   // Form State
   const [images, setImages] = useState<File[]>([]);
@@ -26,15 +27,15 @@ const App: React.FC = () => {
   
   // App State
   const [listings, setListings] = useState<Listing[]>([]);
-  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[] | null>(null);
+  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt'>[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [theme, setTheme] = useState<Theme>('light');
   
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys>({
-    gemini: '',
     ebay: '',
     twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
   });
@@ -44,11 +45,20 @@ const App: React.FC = () => {
   const [sortOrder, setSortOrder] = useState('date-desc');
   const [filterCategory, setFilterCategory] = useState('all');
 
-  // Load initial state from localStorage (keys and listings)
+  // Load initial state from localStorage
   useEffect(() => {
+    // Load theme
+    const savedTheme = localStorage.getItem('theme') as Theme | null;
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        setTheme('dark');
+    }
+
     const savedKeys = localStorage.getItem('apiKeys');
     if (savedKeys) {
       const parsedKeys = JSON.parse(savedKeys);
+      delete parsedKeys.gemini;
       setApiKeys(parsedKeys);
     }
     const savedListings = localStorage.getItem('listings');
@@ -57,12 +67,18 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Persist listings to localStorage
+  // Persist listings and theme to localStorage
   useEffect(() => {
     localStorage.setItem('listings', JSON.stringify(listings));
   }, [listings]);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
   
-  const isGeminiConfigured = !!apiKeys.gemini;
   const isEbayConfigured = !!apiKeys.ebay;
   const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
 
@@ -105,11 +121,6 @@ const App: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isGeminiConfigured) {
-      setError('Please configure your Gemini API key in the settings.');
-      setIsSettingsOpen(true);
-      return;
-    }
     if (images.length === 0) {
       setError('Please upload at least one image.');
       return;
@@ -119,7 +130,7 @@ const App: React.FC = () => {
     setError(null);
     
     try {
-      const generatedData = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured, apiKeys.gemini);
+      const generatedData = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured);
       setVariations(generatedData);
       setImages([]);
       setNotes('');
@@ -134,12 +145,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>, selectedPrice: number) => {
+  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt'>) => {
     const newListing: Listing = {
       ...variation,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      selectedPrice: selectedPrice,
     };
     setListings(prev => [newListing, ...prev]);
   };
@@ -173,9 +183,9 @@ const App: React.FC = () => {
           case 'date-asc':
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           case 'price-desc':
-            return b.selectedPrice - a.selectedPrice;
+            return b.price - a.price;
           case 'price-asc':
-            return a.selectedPrice - b.selectedPrice;
+            return a.price - b.price;
           case 'date-desc':
           default:
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -186,38 +196,38 @@ const App: React.FC = () => {
   const availableCategories = useMemo(() => ['all', ...Array.from(new Set(listings.map(l => l.category)))], [listings]);
 
   return (
-    <div className="min-h-screen font-sans text-slate-800">
-      <header className="bg-white shadow-sm">
+    <div className="bg-slate-50 dark:bg-slate-900 min-h-screen font-sans text-slate-800 dark:text-slate-200">
+      <header className="bg-white dark:bg-slate-800 shadow-sm dark:border-b dark:border-slate-700">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <SparklesIcon className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-slate-900">AI Listing Generator</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">AI Listing Generator</h1>
           </div>
-          <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Settings">
-            <SettingsIcon className="h-6 w-6 text-slate-600" />
+          <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700" aria-label="Settings">
+            <SettingsIcon className="h-6 w-6 text-slate-600 dark:text-slate-400" />
           </button>
         </div>
       </header>
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-800 mb-6">1. Add a New Product</h2>
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg">
+            <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-6">1. Add a New Product</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               
               <div 
-                className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 hover:border-slate-400'}`}
+                className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
                 onDragOver={handleDragEvents}
                 onDrop={handleDrop}
               >
-                <UploadIcon className="mx-auto h-12 w-12 text-slate-400" />
+                <UploadIcon className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" />
                 <label htmlFor="file-upload" className="relative cursor-pointer">
-                  <span className="mt-2 block text-sm font-medium text-indigo-600">
+                  <span className="mt-2 block text-sm font-medium text-indigo-600 dark:text-indigo-400">
                     Click to upload
                   </span>
-                  <span className="mt-1 block text-xs text-slate-500"> or drag and drop</span>
+                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400"> or drag and drop</span>
                 </label>
                 <input 
                   id="file-upload" 
@@ -228,13 +238,13 @@ const App: React.FC = () => {
                   accept="image/*"
                   onChange={e => handleFileChange(e.target.files)}
                 />
-                <p className="text-xs text-slate-500 mt-2">PNG, JPG, etc. Max 4 images.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">PNG, JPG, etc. Max 4 images.</p>
               </div>
 
               <ImagePreview images={images} onRemove={handleRemoveImage} />
               
               <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="notes" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Optional Notes
                 </label>
                 <textarea
@@ -243,13 +253,13 @@ const App: React.FC = () => {
                   rows={4}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
                   placeholder="e.g., 'Slight scratch on the back', 'Never opened', 'Comes with original box'"
                 />
               </div>
 
                {error && (
-                <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">
+                <div className="text-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
                   <p className="text-sm">{error}</p>
                 </div>
               )}
@@ -258,7 +268,7 @@ const App: React.FC = () => {
                  <button
                   type="submit"
                   disabled={isLoading || images.length === 0}
-                  className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
                 >
                   {isLoading ? 'Generating...' : 'Generate Listing Variations'}
                   <SparklesIcon className={`ml-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -267,7 +277,7 @@ const App: React.FC = () => {
             </form>
           </div>
           
-          <div className="bg-white p-8 rounded-xl shadow-lg">
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg">
             <ListingHistory
               listings={filteredAndSortedListings}
               apiKeys={apiKeys}
@@ -298,6 +308,8 @@ const App: React.FC = () => {
       {isSettingsOpen && (
         <SettingsModal 
           initialKeys={apiKeys}
+          theme={theme}
+          onThemeChange={setTheme}
           onClose={() => setIsSettingsOpen(false)} 
           onSave={(newKeys) => {
             setApiKeys(newKeys);
@@ -312,25 +324,20 @@ const App: React.FC = () => {
 
 interface SettingsModalProps {
   initialKeys: ApiKeys;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
   onClose: () => void;
   onSave: (keys: ApiKeys) => void;
 }
 
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onSave }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, theme, onThemeChange, onClose, onSave }) => {
   const [keys, setKeys] = useState<ApiKeys>(initialKeys);
   const [validationStatus, setValidationStatus] = useState({
-    gemini: 'idle' as ValidationStatus,
     ebay: 'idle' as ValidationStatus,
     twitter: 'idle' as ValidationStatus
   });
-  
-  const handleVerifyGemini = async () => {
-    setValidationStatus(prev => ({ ...prev, gemini: 'validating' }));
-    const isValid = await verifyGeminiApiKey(keys.gemini);
-    setValidationStatus(prev => ({ ...prev, gemini: isValid ? 'valid' : 'invalid' }));
-  };
 
   const handleVerifyEbay = async () => {
     setValidationStatus(prev => ({ ...prev, ebay: 'validating' }));
@@ -360,7 +367,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
     } else {
         const key = name as keyof Omit<ApiKeys, 'twitter'>;
         setKeys(prev => ({ ...prev, [key]: value }));
-        if (name === 'ebay' || name === 'gemini') {
+        if (name === 'ebay') {
            setValidationStatus(prev => ({ ...prev, [name]: 'idle' }));
         }
     }
@@ -380,87 +387,102 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+    <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center space-x-3">
-            <SettingsIcon className="h-6 w-6 text-slate-700"/>
-            <h2 className="text-xl font-semibold text-slate-800">Settings</h2>
+            <SettingsIcon className="h-6 w-6 text-slate-700 dark:text-slate-300"/>
+            <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Settings</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100">
-            <CloseIcon className="h-5 w-5 text-slate-500"/>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700">
+            <CloseIcon className="h-5 w-5 text-slate-500 dark:text-slate-400"/>
           </button>
         </div>
         
         <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
-          {/* Gemini Settings */}
-          <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
-            <p className="text-sm text-slate-500">Required for all AI-powered features.</p>
-            <div>
-                <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
-                 <div className="flex items-center space-x-2 mt-1">
-                    <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    <button onClick={handleVerifyGemini} disabled={!keys.gemini || validationStatus.gemini === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
-                    <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.gemini} /></div>
-                </div>
-                 {validationStatus.gemini === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid Gemini API Key.</p>}
+          {/* Theme Toggle */}
+           <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Appearance</h3>
+            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <label htmlFor="theme-toggle" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center">
+                    {theme === 'light' ? <SunIcon className="h-5 w-5 mr-2 text-slate-500" /> : <MoonIcon className="h-5 w-5 mr-2 text-slate-400" />}
+                    Dark Mode
+                </label>
+                <button
+                    type="button"
+                    id="theme-toggle"
+                    onClick={() => onThemeChange(theme === 'light' ? 'dark' : 'light')}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${theme === 'dark' ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                    aria-pressed={theme === 'dark'}
+                >
+                    <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0'}`}
+                    />
+                </button>
             </div>
+          </div>
+
+          {/* Gemini Info */}
+          <div className="space-y-2 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Google Gemini</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              The Google Gemini API key is managed securely via an environment variable (<code>process.env.API_KEY</code>) and does not need to be configured here.
+            </p>
           </div>
 
           {/* eBay Settings */}
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-slate-900">eBay</h3>
-            <p className="text-sm text-slate-500">Optional. Required to enable the "List on eBay" feature.</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">eBay</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Optional. Required to enable the "List on eBay" feature.</p>
             <div>
-                <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
+                <label htmlFor="ebay" className="block text-sm font-medium text-slate-700 dark:text-slate-300">OAuth Token</label>
                  <div className="flex items-center space-x-2 mt-1">
-                    <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    <button onClick={handleVerifyEbay} disabled={!keys.ebay || validationStatus.ebay === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
+                    <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <button onClick={handleVerifyEbay} disabled={!keys.ebay || validationStatus.ebay === 'validating'} className="px-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50">Verify</button>
                     <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.ebay} /></div>
                 </div>
-                 {validationStatus.ebay === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid or expired eBay Token.</p>}
+                 {validationStatus.ebay === 'invalid' && <p className="text-xs text-red-600 dark:text-red-400 mt-1">Invalid or expired eBay Token.</p>}
             </div>
           </div>
 
           {/* Twitter Settings */}
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-slate-900">X (Twitter)</h3>
-            <p className="text-sm text-slate-500">Optional. Required to enable the "Post to X" feature.</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">X (Twitter)</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Optional. Required to enable the "Post to X" feature.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
-                    <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
-                    <input type="password" name="twitter.apiKey" id="twitter.apiKey" value={keys.twitter.apiKey} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700 dark:text-slate-300">API Key</label>
+                    <input type="password" name="twitter.apiKey" id="twitter.apiKey" value={keys.twitter.apiKey} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
                 </div>
                  <div>
-                    <label htmlFor="twitter.apiSecret" className="block text-sm font-medium text-slate-700">API Key Secret</label>
-                    <input type="password" name="twitter.apiSecret" id="twitter.apiSecret" value={keys.twitter.apiSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <label htmlFor="twitter.apiSecret" className="block text-sm font-medium text-slate-700 dark:text-slate-300">API Key Secret</label>
+                    <input type="password" name="twitter.apiSecret" id="twitter.apiSecret" value={keys.twitter.apiSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
                 </div>
                  <div>
-                    <label htmlFor="twitter.accessToken" className="block text-sm font-medium text-slate-700">Access Token</label>
-                    <input type="password" name="twitter.accessToken" id="twitter.accessToken" value={keys.twitter.accessToken} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <label htmlFor="twitter.accessToken" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Access Token</label>
+                    <input type="password" name="twitter.accessToken" id="twitter.accessToken" value={keys.twitter.accessToken} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
                 </div>
                  <div>
-                    <label htmlFor="twitter.accessSecret" className="block text-sm font-medium text-slate-700">Access Token Secret</label>
-                    <input type="password" name="twitter.accessSecret" id="twitter.accessSecret" value={keys.twitter.accessSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <label htmlFor="twitter.accessSecret" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Access Token Secret</label>
+                    <input type="password" name="twitter.accessSecret" id="twitter.accessSecret" value={keys.twitter.accessSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
                 </div>
             </div>
-             <p className="text-xs text-slate-500 !mt-2">For security reasons, verification only checks if fields are non-empty. Full Twitter API integration must be handled server-side.</p>
+             <p className="text-xs text-slate-500 dark:text-slate-400 !mt-2">For security reasons, verification only checks if fields are non-empty. Full Twitter API integration must be handled server-side.</p>
             <div className="flex items-center space-x-2 mt-2">
                 <button 
                   onClick={handleVerifyTwitter} 
                   disabled={Object.values(keys.twitter).some(k => !k) || validationStatus.twitter === 'validating'} 
-                  className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
                 >
                   Verify
                 </button>
                 <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.twitter} /></div>
             </div>
-            {validationStatus.twitter === 'invalid' && <p className="text-xs text-red-600 mt-1">All four Twitter keys are required.</p>}
+            {validationStatus.twitter === 'invalid' && <p className="text-xs text-red-600 dark:text-red-400 mt-1">All four Twitter keys are required.</p>}
           </div>
         </div>
         
-        <div className="flex items-center justify-end p-6 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+        <div className="flex items-center justify-end p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-b-xl">
           <button onClick={handleSave} className="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
             Save & Close
           </button>

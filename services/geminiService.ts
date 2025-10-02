@@ -12,28 +12,9 @@ const baseSchemaProperties = {
     type: Type.STRING,
     description: "A detailed and enticing description of the item, formatted with paragraphs (use '\\n' for new lines). Highlight key features and condition.",
   },
-  priceSuggestion: {
-    type: Type.OBJECT,
-    description: "An object containing three distinct price suggestions and a justification based on market data of sold items.",
-    properties: {
-        quickSale: {
-            type: Type.NUMBER,
-            description: "A competitive price for a fast sale, typically below market value."
-        },
-        marketValue: {
-            type: Type.NUMBER,
-            description: "A fair market price, reflecting the item's condition and demand."
-        },
-        premium: {
-            type: Type.NUMBER,
-            description: "A premium price for buyers looking for quality, often for items in mint condition or with desirable attributes."
-        },
-        justification: {
-            type: Type.STRING,
-            description: "A brief (1-2 sentences) justification for the pricing, referencing comparable sold items or market trends. This is crucial for user trust."
-        }
-    },
-    required: ["quickSale", "marketValue", "premium", "justification"]
+  price: {
+    type: Type.NUMBER,
+    description: "A suggested market price for the item, as a number without currency symbols.",
   },
   category: {
     type: Type.STRING,
@@ -75,13 +56,12 @@ export const generateListing = async (
   notes: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
-  geminiApiKey: string
-): Promise<Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[]> => {
-  if (!geminiApiKey) {
-    throw new Error("Gemini API key is not configured. Please add it in the settings.");
+): Promise<Omit<Listing, 'id' | 'createdAt'>[]> => {
+  if (!process.env.API_KEY) {
+    throw new Error("Gemini API key is not configured in environment variables.");
   }
   
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
@@ -89,18 +69,12 @@ export const generateListing = async (
   
   // Dynamically construct schema and a more detailed prompt
   const finalSchemaProperties: any = { ...baseSchemaProperties };
-  const finalRequired = ["title", "description", "priceSuggestion", "category"];
+  const finalRequired = ["title", "description", "price", "category"];
   
   let promptInstructions = `Act as an expert marketplace seller and copywriter. Your task is to generate 3 compelling and distinct variations of a product listing based on the provided images and user notes.
 
 **Analysis Instructions:**
-1.  **CRITICAL - Analyze Market Data for Pricing & Justification:** Your primary function is to act as a market research expert. Your pricing suggestions **must** be grounded in real-world data from *recently sold items* on marketplaces like eBay.
-    -   'quickSale': A competitive price to attract buyers looking for a deal.
-    -   'marketValue': The most likely selling price based on comparable sold items.
-    -   'premium': A price for a top-quality item, perhaps new or in mint condition with all accessories.
-    -   **MANDATORY 'justification'**: Provide a concrete, data-driven justification (1-2 sentences) for your pricing. This is the most important output. **Do not use vague language.**
-        -   **GOOD EXAMPLE**: "Sold listings for this model in similar 'used' condition on eBay range from $210-$240. The market value price reflects this. The premium price is justified by the included original box."
-        -   **BAD EXAMPLE**: "The prices are based on the item's condition and features." (This is too generic and unacceptable).
+1.  **Analyze Market Data:** Leverage your knowledge of pricing trends from *recently sold items* on marketplaces like eBay and the original manufacturer's specifications to inform your output. Each variation should have a slightly different price reflecting a different sales strategy.
 2.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
 3.  **Identify Details from Notes:** Pay close attention to the user's notes. Explicitly mention any included accessories (e.g., "comes with original box and charger") or noted defects (e.g., "slight scratch on the back corner") in the main description.
 
@@ -109,9 +83,9 @@ export const generateListing = async (
 
 **Output Format & Variation-Specific Instructions:**
 -   Generate the response **only** in a JSON array format that adheres to the provided schema. Each object in the array is a listing variation.
--   **Variation 1 (Professional & High-Value):** A premium, detailed listing targeting buyers looking for quality. Use a professional tone. The price suggestions should reflect the high-end market value.
--   **Variation 2 (Casual & Quick-Sale):** A friendly, concise listing aiming for a fast sale. Use a casual, approachable tone. The price suggestions should be competitive for a quick turnaround.
--   **Variation 3 (Benefit-Focused & Urgent):** A persuasive listing that creates a sense of urgency (e.g., "Don't miss out!"). Highlight key benefits for the buyer. The price suggestions can be mid-range.
+-   **Variation 1 (Professional & High-Value):** A premium, detailed listing targeting buyers looking for quality. Use a professional tone. Price it at the higher end of the market value.
+-   **Variation 2 (Casual & Quick-Sale):** A friendly, concise listing aiming for a fast sale. Use a casual, approachable tone. Price it competitively for a quick turnaround.
+-   **Variation 3 (Benefit-Focused & Urgent):** A persuasive listing that creates a sense of urgency (e.g., "Don't miss out!"). Highlight key benefits for the buyer. The price can be mid-range.
 `;
 
   const platformInstructions: string[] = [];
@@ -170,7 +144,7 @@ export const generateListing = async (
       console.error("Gemini response was not an array:", listingData);
       throw new Error("Failed to generate listing variations. The model returned an invalid format.");
     }
-    return listingData as Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[];
+    return listingData as Omit<Listing, 'id' | 'createdAt'>[];
   } catch (e) {
     console.error("Failed to parse Gemini response:", response.text);
     throw new Error("Failed to generate listing. The model returned an invalid format.");
@@ -178,12 +152,12 @@ export const generateListing = async (
 };
 
 
-export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
-  if (!apiKey) {
+export const verifyGeminiApiKey = async (): Promise<boolean> => {
+  if (!process.env.API_KEY) {
     return false;
   }
   try {
-    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     // Make a lightweight, non-streaming call to check for authentication.
     await ai.models.generateContent({
       model: "gemini-2.5-flash",

@@ -36,7 +36,7 @@ const TabButton: React.FC<{
     className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
       isActive
         ? 'bg-indigo-600 text-white'
-        : 'text-slate-600 hover:bg-slate-200'
+        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
   >
     {label}
@@ -50,7 +50,7 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
   const formattedPrice = useMemo(() => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format(listing.selectedPrice), [listing.selectedPrice]);
+  }).format(listing.price), [listing.price]);
 
   const formattedDate = useMemo(() => new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
@@ -71,12 +71,12 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
   };
 
   return (
-    <div className="border border-slate-200 rounded-lg shadow-sm transition-all hover:shadow-md bg-white">
+    <div className="border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm transition-all hover:shadow-md bg-white dark:bg-slate-800">
         <div className="p-4 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
             <div className="flex justify-between items-start">
                 <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-indigo-600 truncate">{listing.title}</p>
-                    <div className="flex items-center space-x-2 text-xs text-slate-500 mt-1">
+                    <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 truncate">{listing.title}</p>
+                    <div className="flex items-center space-x-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
                         <span>{formattedPrice}</span>
                         <span className="font-bold">&middot;</span>
                         <span>{listing.category}</span>
@@ -91,7 +91,7 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                             onDelete(listing.id);
                         }
                     }}
-                    className="ml-4 p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-50"
+                    className="ml-4 p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-500 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
                     aria-label="Delete listing"
                 >
                     <DeleteIcon className="h-4 w-4" />
@@ -100,8 +100,8 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
         </div>
 
       {isExpanded && (
-        <div className="p-4 border-t border-slate-200">
-            <div className="border-b border-slate-200 mb-4">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+            <div className="border-b border-slate-200 dark:border-slate-700 mb-4">
                 <nav className="flex space-x-2" aria-label="Tabs">
                 <TabButton label="General" isActive={activeTab === 'general'} onClick={(e) => handleTabClick(e, 'general')} />
                 <TabButton label="eBay" isActive={activeTab === 'ebay'} onClick={(e) => handleTabClick(e, 'ebay')} disabled={!listing.ebay} />
@@ -113,8 +113,8 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                 {activeTab === 'general' && (
                 <div className="space-y-4">
                     <div>
-                        <h4 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">Description</h4>
-                        <div className="prose prose-slate max-w-none text-slate-600 space-y-4">
+                        <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-700 pb-2">Description</h4>
+                        <div className="prose prose-slate dark:prose-invert max-w-none text-slate-600 dark:text-slate-300 space-y-4">
                             {listing.description.split('\n').filter(p => p.trim()).map((paragraph, index) => (
                             <p key={index}>{paragraph}</p>
                             ))}
@@ -126,9 +126,9 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                 {activeTab === 'ebay' && listing.ebay && (
                 <div className="space-y-4">
                     <div>
-                        <h4 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">HTML Description</h4>
+                        <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-700 pb-2">HTML Description</h4>
                         <div
-                            className="prose prose-slate max-w-none text-slate-600 p-4 border rounded-lg bg-slate-50"
+                            className="prose prose-slate dark:prose-invert max-w-none text-slate-600 dark:text-slate-300 p-4 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700/50"
                             dangerouslySetInnerHTML={{ __html: listing.ebay.descriptionHtml }}
                         />
                     </div>
@@ -139,15 +139,15 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                     >
                     List on eBay
                     </button>
-                    {!isEbayConfigured && <p className="text-xs text-center text-slate-500 mt-1">eBay token missing in settings.</p>}
+                    {!isEbayConfigured && <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-1">eBay token missing in settings.</p>}
                 </div>
                 )}
                 
                 {activeTab === 'twitter' && listing.twitter && (
                     <div className="space-y-4">
                         <div>
-                            <h4 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">X.com (Twitter) Post</h4>
-                            <div className="p-4 border rounded-lg bg-slate-50 text-slate-700 leading-relaxed whitespace-pre-wrap">
+                            <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-700 pb-2">X.com (Twitter) Post</h4>
+                            <div className="p-4 border dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                                 {listing.twitter.tweet}
                             </div>
                         </div>
@@ -158,7 +158,7 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                         >
                         Post to X
                         </button>
-                        {!isTwitterConfigured && <p className="text-xs text-center text-slate-500 mt-1">Twitter API keys missing in settings.</p>}
+                        {!isTwitterConfigured && <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-1">Twitter API keys missing in settings.</p>}
                     </div>
                 )}
             </div>

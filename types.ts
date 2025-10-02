@@ -3,13 +3,7 @@ export interface Listing {
   createdAt: string;
   title: string;
   description: string;
-  priceSuggestion: {
-    quickSale: number;
-    marketValue: number;
-    premium: number;
-    justification: string;
-  };
-  selectedPrice: number;
+  price: number;
   category: string;
   ebay?: {
     title: string;
