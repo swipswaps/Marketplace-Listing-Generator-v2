@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { ListingHistory } from './components/ListingHistory';
 import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon, InfoIcon } from './components/icons';
@@ -26,13 +26,33 @@ const defaultApiKeys: ApiKeys = {
   twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
 };
 
+// Helper function to safely load state from localStorage
+const loadState = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const savedState = localStorage.getItem(key);
+    if (savedState) {
+      const parsed = JSON.parse(savedState);
+      // Basic merge to ensure new keys in default are respected
+      if (typeof parsed === 'object' && parsed !== null && typeof defaultValue === 'object' && defaultValue !== null) {
+        return { ...defaultValue, ...parsed };
+      }
+      return parsed;
+    }
+  } catch (e) {
+    console.error(`Failed to parse state for key "${key}" from localStorage`, e);
+    localStorage.removeItem(key); // Clear corrupted data
+  }
+  return defaultValue;
+};
+
+
 const App: React.FC = () => {
   // Form State
   const [images, setImages] = useState<File[]>([]);
   const [notes, setNotes] = useState<string>('');
   
   // App State
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [listings, setListings] = useState<Listing[]>(() => loadState('listings', []));
   const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt'>[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,55 +60,21 @@ const App: React.FC = () => {
   
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [apiKeys, setApiKeys] = useState<ApiKeys>(defaultApiKeys);
-  const isInitialMount = useRef(true);
+  const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadState('apiKeys', defaultApiKeys));
 
   // History Management State
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('date-desc');
   const [filterCategory, setFilterCategory] = useState('all');
 
-  // Load initial state from localStorage
+  // Persist state to localStorage whenever it changes
   useEffect(() => {
-    try {
-      const savedKeys = localStorage.getItem('apiKeys');
-      if (savedKeys) {
-        const parsedKeys = JSON.parse(savedKeys);
-        // Merge with defaults to prevent errors if structure is outdated
-        setApiKeys(prev => ({
-            ...prev,
-            ...parsedKeys,
-            twitter: {
-                ...prev.twitter,
-                ...(parsedKeys.twitter || {})
-            }
-        }));
-      }
-    } catch (e) {
-      console.error("Failed to parse API keys from localStorage", e);
-      localStorage.removeItem('apiKeys');
-    }
-    
-    try {
-      const savedListings = localStorage.getItem('listings');
-      if (savedListings) {
-        setListings(JSON.parse(savedListings));
-      }
-    } catch (e) {
-      console.error("Failed to parse listings from localStorage", e);
-      localStorage.removeItem('listings');
-    }
-  }, []);
-
-  // Persist state to localStorage
+    localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
+  }, [apiKeys]);
+  
   useEffect(() => {
-    if (isInitialMount.current) {
-        isInitialMount.current = false;
-    } else {
-        localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
-        localStorage.setItem('listings', JSON.stringify(listings));
-    }
-  }, [apiKeys, listings]);
+    localStorage.setItem('listings', JSON.stringify(listings));
+  }, [listings]);
 
   const isGeminiConfigured = !!apiKeys.gemini;
   const isEbayConfigured = !!apiKeys.ebay;
