@@ -2,9 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from "../utils/fileUtils";
 import { Listing } from "../types";
 
-// Fix: Initialize GoogleGenAI with the API key from environment variables.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-
 const listingSchema = {
   type: Type.OBJECT,
   properties: {
@@ -56,11 +53,14 @@ const listingSchema = {
 
 export const generateListing = async (
   images: File[],
-  notes: string
+  notes: string,
+  apiKey: string
 ): Promise<Listing> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+  if (!apiKey) {
+    throw new Error("Gemini API key is not provided.");
   }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
@@ -70,7 +70,6 @@ export const generateListing = async (
 
   const imageParts = base64Images.map((img, index) => ({
     inlineData: {
-      // Fix: Determine mimeType from the file object for accuracy.
       mimeType: images[index].type,
       data: img,
     },
@@ -89,7 +88,6 @@ The Twitter post should be concise and include hashtags.
 `,
   };
 
-  // Fix: Use the correct model 'gemini-2.5-flash' and API structure.
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: { parts: [...imageParts, textPart] },
@@ -100,7 +98,6 @@ The Twitter post should be concise and include hashtags.
   });
 
   try {
-    // Fix: Access the response text directly from the response object.
     const jsonString = response.text;
     const listingData = JSON.parse(jsonString);
     return listingData as Listing;

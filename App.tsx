@@ -1,9 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { GeneratedListing } from './components/GeneratedListing';
-import { UploadIcon, SparklesIcon } from './components/icons';
+import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon } from './components/icons';
 import { generateListing } from './services/geminiService';
 import type { Listing } from './types';
+
+interface ApiKeys {
+  gemini: string;
+  ebay: string;
+  twitter: {
+    apiKey: string;
+    apiSecret: string;
+    accessToken: string;
+    accessSecret: string;
+  };
+}
 
 const App: React.FC = () => {
   const [images, setImages] = useState<File[]>([]);
@@ -12,15 +23,28 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   
-  // Dummy config values, in a real app these would come from user settings
-  const isEbayConfigured = true;
-  const isTwitterConfigured = true;
+  const [apiKeys, setApiKeys] = useState<ApiKeys>({
+    gemini: '',
+    ebay: '',
+    twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
+  });
+
+  useEffect(() => {
+    const savedKeys = localStorage.getItem('apiKeys');
+    if (savedKeys) {
+      setApiKeys(JSON.parse(savedKeys));
+    }
+  }, []);
+  
+  const isEbayConfigured = !!apiKeys.ebay;
+  const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
 
   const handleFileChange = (files: FileList | null) => {
     if (files) {
       const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-      setImages(prev => [...prev, ...newFiles].slice(0, 4)); // Limit to 4 images
+      setImages(prev => [...prev, ...newFiles].slice(0, 4));
     }
   };
   
@@ -60,13 +84,17 @@ const App: React.FC = () => {
       setError('Please upload at least one image.');
       return;
     }
+    if (!apiKeys.gemini) {
+        setError('Please set your Gemini API key in the settings.');
+        return;
+    }
     
     setIsLoading(true);
     setError(null);
     setListing(null);
 
     try {
-      const generatedData = await generateListing(images, notes);
+      const generatedData = await generateListing(images, notes, apiKeys.gemini);
       setListing(generatedData);
     } catch (err) {
       if (err instanceof Error) {
@@ -90,9 +118,14 @@ const App: React.FC = () => {
   return (
     <div className="bg-slate-50 min-h-screen font-sans">
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center space-x-3">
-          <SparklesIcon className="h-8 w-8 text-indigo-600" />
-          <h1 className="text-2xl font-bold text-slate-900">AI Listing Generator</h1>
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <SparklesIcon className="h-8 w-8 text-indigo-600" />
+            <h1 className="text-2xl font-bold text-slate-900">AI Listing Generator</h1>
+          </div>
+          <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Settings">
+            <SettingsIcon className="h-6 w-6 text-slate-600" />
+          </button>
         </div>
       </header>
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -149,7 +182,7 @@ const App: React.FC = () => {
               <div className="flex items-center space-x-4">
                  <button
                   type="submit"
-                  disabled={isLoading || images.length === 0}
+                  disabled={isLoading || images.length === 0 || !apiKeys.gemini}
                   className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                 >
                   {isLoading ? 'Generating...' : 'Generate Listing'}
@@ -165,6 +198,11 @@ const App: React.FC = () => {
                   </button>
                 )}
               </div>
+               {!apiKeys.gemini && (
+                  <p className="text-center text-sm text-amber-700 bg-amber-50 p-3 rounded-md">
+                    Please add your Gemini API Key in the settings (top right) to enable generation.
+                  </p>
+                )}
             </form>
           </div>
           
@@ -199,9 +237,146 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-
         </div>
       </main>
+      
+      {isSettingsOpen && (
+        <SettingsModal 
+          initialKeys={apiKeys} 
+          onClose={() => setIsSettingsOpen(false)} 
+          onSave={(newKeys) => {
+            setApiKeys(newKeys);
+            localStorage.setItem('apiKeys', JSON.stringify(newKeys));
+            setIsSettingsOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// --- Settings Modal Component ---
+
+interface SettingsModalProps {
+  initialKeys: ApiKeys;
+  onClose: () => void;
+  onSave: (keys: ApiKeys) => void;
+}
+
+const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onSave }) => {
+  const [keys, setKeys] = useState<ApiKeys>(initialKeys);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!keys.gemini.trim()) {
+      newErrors.gemini = 'Gemini API Key is required.';
+    }
+    if (keys.ebay.trim() || keys.twitter.apiKey.trim() || keys.twitter.apiSecret.trim() || keys.twitter.accessToken.trim() || keys.twitter.accessSecret.trim()) {
+        if (keys.ebay.trim() && !keys.ebay.trim()){
+             newErrors.ebay = 'eBay OAuth Token is required for eBay features.';
+        }
+        const twitterKeys = [keys.twitter.apiKey, keys.twitter.apiSecret, keys.twitter.accessToken, keys.twitter.accessSecret];
+        if (twitterKeys.some(k => k.trim()) && twitterKeys.some(k => !k.trim())) {
+            if(!keys.twitter.apiKey.trim()) newErrors.twitterApiKey = 'All four Twitter keys are required.';
+            if(!keys.twitter.apiSecret.trim()) newErrors.twitterApiSecret = 'All four Twitter keys are required.';
+            if(!keys.twitter.accessToken.trim()) newErrors.twitterAccessToken = 'All four Twitter keys are required.';
+            if(!keys.twitter.accessSecret.trim()) newErrors.twitterAccessSecret = 'All four Twitter keys are required.';
+        }
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+  
+  const handleSave = () => {
+    if (validate()) {
+      onSave(keys);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    if (name.startsWith('twitter.')) {
+        const twitterKey = name.split('.')[1] as keyof ApiKeys['twitter'];
+        setKeys(prev => ({
+            ...prev,
+            twitter: { ...prev.twitter, [twitterKey]: value }
+        }));
+    } else {
+        setKeys(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl transform transition-all" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <div className="flex items-center space-x-3">
+            <SettingsIcon className="h-6 w-6 text-slate-700"/>
+            <h2 className="text-xl font-semibold text-slate-800">API Key Settings</h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100">
+            <CloseIcon className="h-5 w-5 text-slate-500"/>
+          </button>
+        </div>
+        
+        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
+          {/* Gemini Settings */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
+            <p className="text-sm text-slate-500">Required for generating all listings.</p>
+            <div>
+                <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
+                <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                {errors.gemini && <p className="text-xs text-red-600 mt-1">{errors.gemini}</p>}
+            </div>
+          </div>
+
+          {/* eBay Settings */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900">eBay</h3>
+            <p className="text-sm text-slate-500">Optional. Required to enable the "List on eBay" feature.</p>
+            <div>
+                <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
+                <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+            </div>
+          </div>
+
+          {/* Twitter Settings */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900">X (Twitter)</h3>
+            <p className="text-sm text-slate-500">Optional. Required to enable the "Post to X" feature.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
+                    <input type="password" name="twitter.apiKey" id="twitter.apiKey" value={keys.twitter.apiKey} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                     {errors.twitterApiKey && <p className="text-xs text-red-600 mt-1">{errors.twitterApiKey}</p>}
+                </div>
+                 <div>
+                    <label htmlFor="twitter.apiSecret" className="block text-sm font-medium text-slate-700">API Key Secret</label>
+                    <input type="password" name="twitter.apiSecret" id="twitter.apiSecret" value={keys.twitter.apiSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    {errors.twitterApiSecret && <p className="text-xs text-red-600 mt-1">{errors.twitterApiSecret}</p>}
+                </div>
+                 <div>
+                    <label htmlFor="twitter.accessToken" className="block text-sm font-medium text-slate-700">Access Token</label>
+                    <input type="password" name="twitter.accessToken" id="twitter.accessToken" value={keys.twitter.accessToken} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    {errors.twitterAccessToken && <p className="text-xs text-red-600 mt-1">{errors.twitterAccessToken}</p>}
+                </div>
+                 <div>
+                    <label htmlFor="twitter.accessSecret" className="block text-sm font-medium text-slate-700">Access Token Secret</label>
+                    <input type="password" name="twitter.accessSecret" id="twitter.accessSecret" value={keys.twitter.accessSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    {errors.twitterAccessSecret && <p className="text-xs text-red-600 mt-1">{errors.twitterAccessSecret}</p>}
+                </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-end p-6 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+          <button onClick={handleSave} className="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            Save & Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
