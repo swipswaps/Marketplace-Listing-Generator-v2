@@ -2,6 +2,53 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from "../utils/fileUtils";
 import { Listing } from "../types";
 
+// Define schema for cited sources
+const sourceSchema = {
+    type: Type.OBJECT,
+    properties: {
+        title: {
+            type: Type.STRING,
+            description: "The title of the comparable sold listing."
+        },
+        url: {
+            type: Type.STRING,
+            description: "The direct URL to the comparable sold listing."
+        }
+    },
+    required: ["title", "url"],
+};
+
+// Define schema for detailed price suggestions
+const priceSuggestionSchema = {
+    type: Type.OBJECT,
+    description: "A detailed price suggestion based on market analysis of sold items.",
+    properties: {
+        quickSale: {
+            type: Type.NUMBER,
+            description: "A competitive price for a quick sale.",
+        },
+        marketValue: {
+            type: Type.NUMBER,
+            description: "The fair market value for the item.",
+        },
+        premium: {
+            type: Type.NUMBER,
+            description: "A premium price for a patient seller with a high-quality item.",
+        },
+        justification: {
+            type: Type.STRING,
+            description: "A brief, data-driven justification for the pricing, referencing the condition and comparable sold items. FORBIDDEN from using vague phrases like 'Based on my analysis' or 'Considering the market'. MUST be concrete."
+        },
+        sources: {
+            type: Type.ARRAY,
+            description: "An array of 1-3 direct sources (URLs) to comparable *sold* items on platforms like eBay that were used for the analysis.",
+            items: sourceSchema,
+        }
+    },
+    required: ["quickSale", "marketValue", "premium", "justification", "sources"],
+};
+
+
 // Define base schema parts to avoid repetition
 const baseSchemaProperties = {
   title: {
@@ -12,10 +59,7 @@ const baseSchemaProperties = {
     type: Type.STRING,
     description: "A detailed and enticing description of the item, formatted with paragraphs (use '\\n' for new lines). Highlight key features and condition.",
   },
-  price: {
-    type: Type.NUMBER,
-    description: "A suggested market price for the item, as a number without currency symbols.",
-  },
+  priceSuggestion: priceSuggestionSchema,
   category: {
     type: Type.STRING,
     description: "A single, relevant category for the item (e.g., 'Electronics', 'Men's Fashion', 'Home Decor').",
@@ -54,14 +98,15 @@ const twitterSchemaProperty = {
 export const generateListing = async (
   images: File[],
   notes: string,
+  geminiApiKey: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
 ): Promise<Omit<Listing, 'id' | 'createdAt'>[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("Gemini API key is not configured in environment variables.");
+  if (!geminiApiKey) {
+    throw new Error("Gemini API key is not configured. Please add it in the settings.");
   }
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
@@ -69,23 +114,24 @@ export const generateListing = async (
   
   // Dynamically construct schema and a more detailed prompt
   const finalSchemaProperties: any = { ...baseSchemaProperties };
-  const finalRequired = ["title", "description", "price", "category"];
+  const finalRequired = ["title", "description", "priceSuggestion", "category"];
   
-  let promptInstructions = `Act as an expert marketplace seller and copywriter. Your task is to generate 3 compelling and distinct variations of a product listing based on the provided images and user notes.
+  let promptInstructions = `Act as an expert marketplace seller and e-commerce analyst. Your task is to generate 3 compelling and distinct variations of a product listing based on the provided images and user notes.
 
-**Analysis Instructions:**
-1.  **Analyze Market Data:** Leverage your knowledge of pricing trends from *recently sold items* on marketplaces like eBay and the original manufacturer's specifications to inform your output. Each variation should have a slightly different price reflecting a different sales strategy.
-2.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
-3.  **Identify Details from Notes:** Pay close attention to the user's notes. Explicitly mention any included accessories (e.g., "comes with original box and charger") or noted defects (e.g., "slight scratch on the back corner") in the main description.
+**Mandatory Analysis & Sourcing Instructions:**
+1.  **Analyze Market Data & CITE SOURCES:** Your entire analysis MUST be based on *recently sold items* from public marketplaces like eBay. You are REQUIRED to provide 1-3 direct URLs to the comparable *sold listings* you used for your analysis in the 'sources' array.
+2.  **Provide Data-Driven Justification:** In the 'justification' field, you MUST explain your pricing strategy by referencing the condition and specific features of the item compared to the sold items you found. DO NOT use generic or vague statements. Be specific. For example: "This is priced slightly higher than the sold item [Source 1] because it includes the original box, which the other did not."
+3.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
+4.  **Incorporate User Notes:** Explicitly mention details from the user's notes (e.g., included accessories, noted defects) in the main description.
 
 **User Provided Information:**
 -   **Notes:** "${notes || "No additional notes provided."}"
 
 **Output Format & Variation-Specific Instructions:**
 -   Generate the response **only** in a JSON array format that adheres to the provided schema. Each object in the array is a listing variation.
--   **Variation 1 (Professional & High-Value):** A premium, detailed listing targeting buyers looking for quality. Use a professional tone. Price it at the higher end of the market value.
--   **Variation 2 (Casual & Quick-Sale):** A friendly, concise listing aiming for a fast sale. Use a casual, approachable tone. Price it competitively for a quick turnaround.
--   **Variation 3 (Benefit-Focused & Urgent):** A persuasive listing that creates a sense of urgency (e.g., "Don't miss out!"). Highlight key benefits for the buyer. The price can be mid-range.
+-   **Variation 1 (Professional & High-Value):** A premium, detailed listing targeting buyers looking for quality. Use a professional tone. Price it at the 'premium' end.
+-   **Variation 2 (Casual & Quick-Sale):** A friendly, concise listing aiming for a fast sale. Use a casual, approachable tone. Price it at the 'quickSale' end.
+-   **Variation 3 (Benefit-Focused & Market-Value):** A persuasive listing that highlights key benefits. Price it at the 'marketValue' point.
 `;
 
   const platformInstructions: string[] = [];
@@ -144,20 +190,21 @@ export const generateListing = async (
       console.error("Gemini response was not an array:", listingData);
       throw new Error("Failed to generate listing variations. The model returned an invalid format.");
     }
+    // This is a type assertion. Add runtime validation if needed for robustness.
     return listingData as Omit<Listing, 'id' | 'createdAt'>[];
   } catch (e) {
-    console.error("Failed to parse Gemini response:", response.text);
-    throw new Error("Failed to generate listing. The model returned an invalid format.");
+    console.error("Failed to parse Gemini response:", response.text, e);
+    throw new Error("Failed to generate listing. The model returned an invalid JSON format.");
   }
 };
 
 
-export const verifyGeminiApiKey = async (): Promise<boolean> => {
-  if (!process.env.API_KEY) {
+export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
+  if (!apiKey) {
     return false;
   }
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     // Make a lightweight, non-streaming call to check for authentication.
     await ai.models.generateContent({
       model: "gemini-2.5-flash",

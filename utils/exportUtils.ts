@@ -26,21 +26,40 @@ function escapeCsvCell(cell: any): string {
 
 function convertToCsv(data: Listing[]): string {
     const headers = [
-        'ID', 'Created At', 'Title', 'Description', 'Price', 'Category', 
+        'ID', 'Created At', 'Title', 'Description', 'Selected Price', 'Category', 
+        'Suggested Quick Sale Price', 'Suggested Market Value Price', 'Suggested Premium Price',
+        'Pricing Justification', 'Source 1 Title', 'Source 1 URL', 'Source 2 Title', 'Source 2 URL', 'Source 3 Title', 'Source 3 URL',
         'eBay Title', 'eBay HTML Description', 'Twitter Tweet'
     ];
     
-    const rows = data.map(listing => [
-        listing.id,
-        listing.createdAt,
-        listing.title,
-        listing.description,
-        listing.price,
-        listing.category,
-        listing.ebay?.title,
-        listing.ebay?.descriptionHtml,
-        listing.twitter?.tweet,
-    ].map(escapeCsvCell));
+    const rows = data.map(listing => {
+        const row = [
+            listing.id,
+            listing.createdAt,
+            listing.title,
+            listing.description,
+            listing.selectedPrice,
+            listing.category,
+            listing.priceSuggestion.quickSale,
+            listing.priceSuggestion.marketValue,
+            listing.priceSuggestion.premium,
+            listing.priceSuggestion.justification,
+        ];
+
+        // Add up to 3 sources
+        for (let i = 0; i < 3; i++) {
+            const source = listing.priceSuggestion.sources?.[i];
+            row.push(source?.title || '');
+            row.push(source?.url || '');
+        }
+
+        row.push(
+            listing.ebay?.title,
+            listing.ebay?.descriptionHtml,
+            listing.twitter?.tweet,
+        );
+        return row.map(escapeCsvCell);
+    });
 
     return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
@@ -56,20 +75,37 @@ export const exportAsCsv = (data: Listing[], xls = false) => {
 export const exportAsPdf = (data: Listing[]) => {
     const doc = new jsPDF();
     
-    const tableData = data.map(listing => [
-        listing.title,
-        listing.category,
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.price),
-        new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
-    ]);
+    const tableData = data.map(listing => {
+        const sourcesText = (listing.priceSuggestion.sources || [])
+            .map(s => `${s.title}: ${s.url}`)
+            .join('\n');
+            
+        return [
+            listing.title,
+            listing.category,
+            new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.selectedPrice),
+            new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
+            listing.priceSuggestion.justification,
+            sourcesText
+        ];
+    });
 
     autoTable(doc, {
-        head: [['Title', 'Category', 'Price', 'Date']],
+        head: [['Title', 'Category', 'Price', 'Date', 'Justification', 'Cited Sources']],
         body: tableData,
         didDrawPage: (data) => {
             doc.setFontSize(20);
             doc.text('Marketplace Listings', data.settings.margin.left, 15);
-        }
+        },
+        styles: {
+            cellPadding: 2,
+            fontSize: 8,
+        },
+        headStyles: {
+            fillColor: [22, 163, 74], // Green
+            textColor: 255,
+            fontStyle: 'bold',
+        },
     });
 
     doc.save('listings.pdf');
@@ -98,8 +134,13 @@ CREATE TABLE listings (
     createdAt TIMESTAMP,
     title TEXT,
     description TEXT,
-    price DECIMAL(10, 2),
+    selectedPrice DECIMAL(10, 2),
     category VARCHAR(255),
+    priceSuggestion_quickSale DECIMAL(10, 2),
+    priceSuggestion_marketValue DECIMAL(10, 2),
+    priceSuggestion_premium DECIMAL(10, 2),
+    priceSuggestion_justification TEXT,
+    priceSuggestion_sources JSON,
     ebayTitle TEXT,
     ebayDescriptionHtml TEXT,
     twitterTweet TEXT
@@ -109,21 +150,27 @@ CREATE TABLE listings (
 `;
 
     data.forEach(listing => {
+        const sourcesJson = escapeSqlValue(JSON.stringify(listing.priceSuggestion.sources));
         const values = [
             escapeSqlValue(listing.id),
             escapeSqlValue(listing.createdAt),
             escapeSqlValue(listing.title),
             escapeSqlValue(listing.description),
-            escapeSqlValue(listing.price),
+            escapeSqlValue(listing.selectedPrice),
             escapeSqlValue(listing.category),
+            escapeSqlValue(listing.priceSuggestion.quickSale),
+            escapeSqlValue(listing.priceSuggestion.marketValue),
+            escapeSqlValue(listing.priceSuggestion.premium),
+            escapeSqlValue(listing.priceSuggestion.justification),
+            sourcesJson,
             escapeSqlValue(listing.ebay?.title),
             escapeSqlValue(listing.ebay?.descriptionHtml),
             escapeSqlValue(listing.twitter?.tweet),
         ].join(', ');
         
-        sqlString += `INSERT INTO listings (id, createdAt, title, description, price, category, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
+        sqlString += `INSERT INTO listings (id, createdAt, title, description, selectedPrice, category, priceSuggestion_quickSale, priceSuggestion_marketValue, priceSuggestion_premium, priceSuggestion_justification, priceSuggestion_sources, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
     });
     
-    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-8;' });
+    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-t;' });
     triggerDownload(blob, 'listings.sql');
 };
