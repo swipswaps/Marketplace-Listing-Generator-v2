@@ -1,0 +1,5 @@
+{
+  "name": "Marketplace Listing Generator",
+  "description": "An AI-powered tool that automatically generates compelling marketplace listings, including a title, description, price, and category, based on product details and images.",
+  "requestFramePermissions": []
+}
