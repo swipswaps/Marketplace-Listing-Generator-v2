@@ -60,20 +60,29 @@ export const exportAsCsv = (data: Listing[], xls = false) => {
 export const exportAsPdf = (data: Listing[]) => {
     const doc = new jsPDF();
     
+    const formatCurrency = (price: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
+
     const tableData = data.map(listing => [
         listing.title,
         listing.category,
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.selectedPrice),
+        formatCurrency(listing.selectedPrice),
+        `${formatCurrency(listing.priceSuggestion.quickSale)} / ${formatCurrency(listing.priceSuggestion.marketValue)} / ${formatCurrency(listing.priceSuggestion.premium)}`,
         new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
     ]);
 
     autoTable(doc, {
-        head: [['Title', 'Category', 'Price', 'Date']],
+        head: [['Title', 'Category', 'Selected Price', 'Price Suggestions (QS/MV/P)', 'Date']],
         body: tableData,
         didDrawPage: (data) => {
             doc.setFontSize(20);
             doc.text('Marketplace Listings', data.settings.margin.left, 15);
-        }
+        },
+        styles: {
+            fontSize: 8,
+        },
+        headStyles: {
+            fillColor: [30, 41, 59], // slate-800
+        },
     });
 
     doc.save('listings.pdf');
