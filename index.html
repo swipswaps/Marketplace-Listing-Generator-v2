@@ -11,6 +11,14 @@
         darkMode: 'class',
       }
     </script>
+    <script>
+      // Set theme on initial load to prevent FOUC (Flash of Unstyled Content)
+      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,line-clamp"></script>
     <style>
       @keyframes fadeIn {

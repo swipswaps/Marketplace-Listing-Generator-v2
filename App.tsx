@@ -20,6 +20,15 @@ interface ApiKeys {
 
 type Theme = 'light' | 'dark';
 
+// Helper function to get initial theme synchronously to prevent flicker
+const getInitialTheme = (): Theme => {
+  if (typeof window === 'undefined') return 'light';
+  const savedTheme = localStorage.getItem('theme') as Theme;
+  if (savedTheme && ['light', 'dark'].includes(savedTheme)) return savedTheme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
+
 const App: React.FC = () => {
   // Form State
   const [images, setImages] = useState<File[]>([]);
@@ -31,7 +40,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -45,16 +54,8 @@ const App: React.FC = () => {
   const [sortOrder, setSortOrder] = useState('date-desc');
   const [filterCategory, setFilterCategory] = useState('all');
 
-  // Load initial state from localStorage
+  // Load initial state from localStorage (keys and listings)
   useEffect(() => {
-    // Load theme
-    const savedTheme = localStorage.getItem('theme') as Theme | null;
-    if (savedTheme) {
-        setTheme(savedTheme);
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        setTheme('dark');
-    }
-
     const savedKeys = localStorage.getItem('apiKeys');
     if (savedKeys) {
       const parsedKeys = JSON.parse(savedKeys);
@@ -67,17 +68,21 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Persist listings and theme to localStorage
+  // Persist listings to localStorage
   useEffect(() => {
     localStorage.setItem('listings', JSON.stringify(listings));
   }, [listings]);
 
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  // Handler for changing the theme
+  const handleThemeChange = (newTheme: Theme) => {
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
   
   const isEbayConfigured = !!apiKeys.ebay;
   const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
@@ -309,7 +314,7 @@ const App: React.FC = () => {
         <SettingsModal 
           initialKeys={apiKeys}
           theme={theme}
-          onThemeChange={setTheme}
+          onThemeChange={handleThemeChange}
           onClose={() => setIsSettingsOpen(false)} 
           onSave={(newKeys) => {
             setApiKeys(newKeys);
