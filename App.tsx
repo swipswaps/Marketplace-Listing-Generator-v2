@@ -96,7 +96,7 @@ const App: React.FC = () => {
     setListing(null);
 
     try {
-      const generatedData = await generateListing(images, notes, apiKeys.gemini);
+      const generatedData = await generateListing(images, notes, apiKeys.gemini, isEbayConfigured, isTwitterConfigured);
       setListing(generatedData);
     } catch (err) {
       if (err instanceof Error) {
