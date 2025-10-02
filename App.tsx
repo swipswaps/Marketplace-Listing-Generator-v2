@@ -196,7 +196,7 @@ const App: React.FC = () => {
   const availableCategories = useMemo(() => ['all', ...Array.from(new Set(listings.map(l => l.category)))], [listings]);
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-900 min-h-screen font-sans text-slate-800 dark:text-slate-200">
+    <div className="min-h-screen font-sans text-slate-800 dark:text-slate-200">
       <header className="bg-white dark:bg-slate-800 shadow-sm dark:border-b dark:border-slate-700">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center space-x-3">
