@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { GeneratedListing } from './components/GeneratedListing';
-import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon } from './components/icons';
-import { generateListing } from './services/geminiService';
+import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
+import { generateListing, verifyGeminiApiKey } from './services/geminiService';
+import { verifyEbayToken } from './services/ebayService';
+import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
 
 interface ApiKeys {
@@ -226,6 +228,7 @@ const App: React.FC = () => {
               {listing && !isLoading && (
                 <GeneratedListing 
                   listing={listing}
+                  apiKeys={apiKeys}
                   isEbayConfigured={isEbayConfigured}
                   isTwitterConfigured={isTwitterConfigured}
                 />
@@ -263,35 +266,36 @@ interface SettingsModalProps {
   onSave: (keys: ApiKeys) => void;
 }
 
+type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onSave }) => {
   const [keys, setKeys] = useState<ApiKeys>(initialKeys);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [validationStatus, setValidationStatus] = useState({
+    gemini: 'idle' as ValidationStatus,
+    ebay: 'idle' as ValidationStatus,
+    twitter: 'idle' as ValidationStatus
+  });
 
-  const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
-    if (!keys.gemini.trim()) {
-      newErrors.gemini = 'Gemini API Key is required.';
-    }
-    if (keys.ebay.trim() || keys.twitter.apiKey.trim() || keys.twitter.apiSecret.trim() || keys.twitter.accessToken.trim() || keys.twitter.accessSecret.trim()) {
-        if (keys.ebay.trim() && !keys.ebay.trim()){
-             newErrors.ebay = 'eBay OAuth Token is required for eBay features.';
-        }
-        const twitterKeys = [keys.twitter.apiKey, keys.twitter.apiSecret, keys.twitter.accessToken, keys.twitter.accessSecret];
-        if (twitterKeys.some(k => k.trim()) && twitterKeys.some(k => !k.trim())) {
-            if(!keys.twitter.apiKey.trim()) newErrors.twitterApiKey = 'All four Twitter keys are required.';
-            if(!keys.twitter.apiSecret.trim()) newErrors.twitterApiSecret = 'All four Twitter keys are required.';
-            if(!keys.twitter.accessToken.trim()) newErrors.twitterAccessToken = 'All four Twitter keys are required.';
-            if(!keys.twitter.accessSecret.trim()) newErrors.twitterAccessSecret = 'All four Twitter keys are required.';
-        }
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const handleVerifyGemini = async () => {
+    setValidationStatus(prev => ({ ...prev, gemini: 'validating' }));
+    const isValid = await verifyGeminiApiKey(keys.gemini);
+    setValidationStatus(prev => ({ ...prev, gemini: isValid ? 'valid' : 'invalid' }));
+  };
+  
+  const handleVerifyEbay = async () => {
+    setValidationStatus(prev => ({ ...prev, ebay: 'validating' }));
+    const isValid = await verifyEbayToken(keys.ebay);
+    setValidationStatus(prev => ({ ...prev, ebay: isValid ? 'valid' : 'invalid' }));
+  };
+
+  const handleVerifyTwitter = async () => {
+    setValidationStatus(prev => ({ ...prev, twitter: 'validating' }));
+    const isValid = await verifyTwitterCredentials(keys.twitter);
+    setValidationStatus(prev => ({ ...prev, twitter: isValid ? 'valid' : 'invalid' }));
   };
   
   const handleSave = () => {
-    if (validate()) {
-      onSave(keys);
-    }
+    onSave(keys);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -302,8 +306,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
             ...prev,
             twitter: { ...prev.twitter, [twitterKey]: value }
         }));
+        setValidationStatus(prev => ({ ...prev, twitter: 'idle' }));
     } else {
         setKeys(prev => ({ ...prev, [name]: value }));
+        if (name === 'gemini' || name === 'ebay') {
+           setValidationStatus(prev => ({ ...prev, [name]: 'idle' }));
+        }
+    }
+  };
+  
+  const StatusIndicator: React.FC<{ status: ValidationStatus }> = ({ status }) => {
+    switch (status) {
+      case 'validating':
+        return <SparklesIcon className="h-5 w-5 text-slate-400 animate-spin" />;
+      case 'valid':
+        return <CheckIcon className="h-5 w-5 text-green-500" />;
+      case 'invalid':
+        return <ErrorIcon className="h-5 w-5 text-red-500" />;
+      default:
+        return null;
     }
   };
 
@@ -327,8 +348,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
             <p className="text-sm text-slate-500">Required for generating all listings.</p>
             <div>
                 <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
-                <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                {errors.gemini && <p className="text-xs text-red-600 mt-1">{errors.gemini}</p>}
+                <div className="flex items-center space-x-2 mt-1">
+                  <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                  <button onClick={handleVerifyGemini} disabled={!keys.gemini || validationStatus.gemini === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
+                  <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.gemini} /></div>
+                </div>
+                {validationStatus.gemini === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid Gemini API Key.</p>}
             </div>
           </div>
 
@@ -338,7 +363,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
             <p className="text-sm text-slate-500">Optional. Required to enable the "List on eBay" feature.</p>
             <div>
                 <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
-                <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                 <div className="flex items-center space-x-2 mt-1">
+                    <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <button onClick={handleVerifyEbay} disabled={!keys.ebay || validationStatus.ebay === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
+                    <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.ebay} /></div>
+                </div>
+                 {validationStatus.ebay === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid or expired eBay Token.</p>}
             </div>
           </div>
 
@@ -350,24 +380,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
                  <div>
                     <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
                     <input type="password" name="twitter.apiKey" id="twitter.apiKey" value={keys.twitter.apiKey} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                     {errors.twitterApiKey && <p className="text-xs text-red-600 mt-1">{errors.twitterApiKey}</p>}
                 </div>
                  <div>
                     <label htmlFor="twitter.apiSecret" className="block text-sm font-medium text-slate-700">API Key Secret</label>
                     <input type="password" name="twitter.apiSecret" id="twitter.apiSecret" value={keys.twitter.apiSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    {errors.twitterApiSecret && <p className="text-xs text-red-600 mt-1">{errors.twitterApiSecret}</p>}
                 </div>
                  <div>
                     <label htmlFor="twitter.accessToken" className="block text-sm font-medium text-slate-700">Access Token</label>
                     <input type="password" name="twitter.accessToken" id="twitter.accessToken" value={keys.twitter.accessToken} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    {errors.twitterAccessToken && <p className="text-xs text-red-600 mt-1">{errors.twitterAccessToken}</p>}
                 </div>
                  <div>
                     <label htmlFor="twitter.accessSecret" className="block text-sm font-medium text-slate-700">Access Token Secret</label>
                     <input type="password" name="twitter.accessSecret" id="twitter.accessSecret" value={keys.twitter.accessSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    {errors.twitterAccessSecret && <p className="text-xs text-red-600 mt-1">{errors.twitterAccessSecret}</p>}
                 </div>
             </div>
+             <p className="text-xs text-slate-500 !mt-2">For security reasons, verification only checks if fields are non-empty. Full Twitter API integration must be handled server-side.</p>
+            <div className="flex items-center space-x-2 mt-2">
+                <button 
+                  onClick={handleVerifyTwitter} 
+                  disabled={Object.values(keys.twitter).some(k => !k) || validationStatus.twitter === 'validating'} 
+                  className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Verify
+                </button>
+                <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.twitter} /></div>
+            </div>
+            {validationStatus.twitter === 'invalid' && <p className="text-xs text-red-600 mt-1">All four Twitter keys are required.</p>}
           </div>
         </div>
         

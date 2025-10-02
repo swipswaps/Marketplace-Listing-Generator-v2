@@ -106,3 +106,22 @@ The Twitter post should be concise and include hashtags.
     throw new Error("Failed to generate listing. The model returned an invalid format.");
   }
 };
+
+
+export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
+  if (!apiKey) {
+    return false;
+  }
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // Make a lightweight, non-streaming call to check for authentication.
+    await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: "hello",
+    });
+    return true;
+  } catch (error) {
+    console.error("Gemini API key verification failed:", error);
+    return false;
+  }
+};

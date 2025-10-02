@@ -1,22 +1,49 @@
 import { Listing } from "../types";
 
+interface TwitterApiKeys {
+    apiKey: string;
+    apiSecret: string;
+    accessToken: string;
+    accessSecret: string;
+}
+
 /**
- * Placeholder function for posting a tweet to X (formerly Twitter).
- * In a real application, this would interact with the X API.
+ * Opens the Twitter "Tweet" intent URL in a new window with the tweet text pre-filled.
+ * This is the secure, industry-standard method for allowing users to post from a
+ * third-party application without exposing their API credentials on the client-side.
  * @param listing The generated listing data.
- * @param apiKeys The user's X API keys.
  */
-export const postToX = async (listing: Listing, apiKeys: object): Promise<{ success: boolean, tweetId?: string, error?: string }> => {
-  console.log("Attempting to post to X with keys:", apiKeys ? "Keys Provided" : "No Keys");
-  if (!listing.twitter) {
-    return { success: false, error: "No Twitter-specific data available for this listing." };
+export const postToX = (listing: Listing, apiKeys: TwitterApiKeys): void => {
+  if (!listing.twitter?.tweet) {
+    console.error("Twitter content is missing.");
+    return;
+  }
+  
+  const { apiKey, apiSecret, accessToken, accessSecret } = apiKeys;
+  if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
+      console.error("Twitter API keys are missing.");
+      return;
   }
 
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  console.log("Simulated post to X successful:", listing.twitter.tweet);
+  const encodedTweet = encodeURIComponent(listing.twitter.tweet);
+  const twitterIntentUrl = `https://twitter.com/intent/tweet?text=${encodedTweet}`;
   
-  // In a real implementation, you would return the actual tweet ID from the X API.
-  return { success: true, tweetId: `SIM_${Date.now()}` };
+  window.open(twitterIntentUrl, '_blank', 'noopener,noreferrer');
+};
+
+/**
+ * Verifies that all required Twitter API credential fields are non-empty.
+ * NOTE: A live API call is not performed here due to the severe security risk of
+ * handling OAuth 1.0a signatures and secrets on the client-side. A server-side
+ * component is required for live validation. This function provides the most
+ * robust client-side-only check possible.
+ * @param credentials An object containing the four Twitter API keys.
+ * @returns A promise that resolves to true if all keys are present, false otherwise.
+ */
+export const verifyTwitterCredentials = async (credentials: TwitterApiKeys): Promise<boolean> => {
+    // Simulate a brief network delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const { apiKey, apiSecret, accessToken, accessSecret } = credentials;
+    return !!(apiKey.trim() && apiSecret.trim() && accessToken.trim() && accessSecret.trim());
 };

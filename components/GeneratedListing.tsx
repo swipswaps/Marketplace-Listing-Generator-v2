@@ -1,8 +1,23 @@
 import React, { useState, useMemo } from 'react';
 import type { Listing } from '../types';
+import { listOnEbay } from '../services/ebayService';
+import { postToX } from '../services/twitterService';
+
+// Define ApiKeys interface locally to avoid prop drilling issues if it becomes complex
+interface ApiKeys {
+  gemini: string;
+  ebay: string;
+  twitter: {
+    apiKey: string;
+    apiSecret: string;
+    accessToken: string;
+    accessSecret: string;
+  };
+}
 
 interface GeneratedListingProps {
   listing: Listing;
+  apiKeys: ApiKeys;
   isEbayConfigured: boolean;
   isTwitterConfigured: boolean;
 }
@@ -28,7 +43,7 @@ const TabButton: React.FC<{
   </button>
 );
 
-export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, isEbayConfigured, isTwitterConfigured }) => {
+export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured }) => {
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
   const formattedPrice = useMemo(() => new Intl.NumberFormat('en-US', {
@@ -37,11 +52,11 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, isE
   }).format(listing.price), [listing.price]);
   
   const handleListOnEbay = () => {
-    alert("This would trigger the eBay listing process!");
+    listOnEbay(listing, apiKeys.ebay);
   };
 
   const handlePostToX = () => {
-    alert("This would trigger posting to X (Twitter)!");
+    postToX(listing, apiKeys.twitter);
   };
 
   return (
