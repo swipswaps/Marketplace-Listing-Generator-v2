@@ -96,6 +96,13 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
                 {listings.length > 0 && (
                      <div className="flex items-center space-x-2 flex-shrink-0">
                         <ExportDropdown listings={listings} />
+                        <button
+                            onClick={onClear}
+                            className="inline-flex items-center justify-center rounded-md border border-slate-300 shadow-sm px-3 py-2 bg-white text-sm font-medium text-slate-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 focus:outline-none"
+                            aria-label="Clear all listings"
+                        >
+                            <DeleteIcon className="h-5 w-5" />
+                        </button>
                     </div>
                 )}
             </div>
@@ -164,19 +171,6 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
                     </div>
                 )}
             </div>
-
-             {/* Footer Actions */}
-             {props.listings.length > 0 && (
-                <div className="mt-4 pt-4 border-t flex justify-end items-center">
-                   <button
-                        onClick={onClear}
-                        className="inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800"
-                    >
-                        <DeleteIcon className="h-4 w-4 mr-1.5" />
-                        Clear History
-                    </button>
-                </div>
-            )}
         </div>
     );
 };
