@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ImagePreview } from './components/ImagePreview';
-import { GeneratedListing } from './components/GeneratedListing';
+import { ListingHistory } from './components/ListingHistory';
 import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
 import { generateListing, verifyGeminiApiKey } from './services/geminiService';
 import { verifyEbayToken } from './services/ebayService';
@@ -19,26 +19,45 @@ interface ApiKeys {
 }
 
 const App: React.FC = () => {
+  // Form State
   const [images, setImages] = useState<File[]>([]);
   const [notes, setNotes] = useState<string>('');
-  const [listing, setListing] = useState<Listing | null>(null);
+  
+  // App State
+  const [listings, setListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys>({
     gemini: '',
     ebay: '',
     twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
   });
 
+  // History Management State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState('date-desc');
+  const [filterCategory, setFilterCategory] = useState('all');
+
+  // Load initial state from localStorage
   useEffect(() => {
     const savedKeys = localStorage.getItem('apiKeys');
     if (savedKeys) {
       setApiKeys(JSON.parse(savedKeys));
     }
+    const savedListings = localStorage.getItem('listings');
+    if (savedListings) {
+      setListings(JSON.parse(savedListings));
+    }
   }, []);
+
+  // Persist listings to localStorage
+  useEffect(() => {
+    localStorage.setItem('listings', JSON.stringify(listings));
+  }, [listings]);
   
   const isEbayConfigured = !!apiKeys.ebay;
   const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
@@ -93,11 +112,18 @@ const App: React.FC = () => {
     
     setIsLoading(true);
     setError(null);
-    setListing(null);
-
+    
     try {
       const generatedData = await generateListing(images, notes, apiKeys.gemini, isEbayConfigured, isTwitterConfigured);
-      setListing(generatedData);
+      const newListing: Listing = {
+        ...generatedData,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      setListings(prev => [newListing, ...prev]);
+      // Reset form after successful generation
+      setImages([]);
+      setNotes('');
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -108,14 +134,50 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
-  
-  const handleReset = () => {
-    setImages([]);
-    setNotes('');
-    setListing(null);
-    setError(null);
-    setIsLoading(false);
+
+  const handleDeleteListing = (id: string) => {
+    setListings(prev => prev.filter(l => l.id !== id));
   };
+  
+  const handleClearHistory = () => {
+    if (window.confirm('Are you sure you want to delete all listings? This cannot be undone.')) {
+        setListings([]);
+    }
+  };
+
+  // Derived state for filtered and sorted listings
+  const filteredAndSortedListings = useMemo(() => {
+    return listings
+      .filter(listing => {
+        // Category filter
+        if (filterCategory !== 'all' && listing.category !== filterCategory) {
+          return false;
+        }
+        // Search filter
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        if (lowerSearchTerm && 
+            !listing.title.toLowerCase().includes(lowerSearchTerm) && 
+            !listing.description.toLowerCase().includes(lowerSearchTerm)) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        switch (sortOrder) {
+          case 'date-asc':
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          case 'price-desc':
+            return b.price - a.price;
+          case 'price-asc':
+            return a.price - b.price;
+          case 'date-desc':
+          default:
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }
+      });
+  }, [listings, searchTerm, sortOrder, filterCategory]);
+
+  const availableCategories = useMemo(() => ['all', ...Array.from(new Set(listings.map(l => l.category)))], [listings]);
 
   return (
     <div className="bg-slate-50 min-h-screen font-sans">
@@ -133,9 +195,8 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           
-          {/* Left Column: Input Form */}
           <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-800 mb-6">1. Upload Your Product Images</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-6">1. Add a New Product</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               
               <div 
@@ -181,64 +242,46 @@ const App: React.FC = () => {
                 />
               </div>
 
+               {error && (
+                <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">
+                  <p className="text-sm">{error}</p>
+                </div>
+              )}
+
               <div className="flex items-center space-x-4">
                  <button
                   type="submit"
                   disabled={isLoading || images.length === 0 || !apiKeys.gemini}
                   className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isLoading ? 'Generating...' : 'Generate Listing'}
+                  {isLoading ? 'Generating...' : 'Generate & Add to History'}
                   <SparklesIcon className={`ml-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
-                {(listing || error) && (
-                   <button
-                    type="button"
-                    onClick={handleReset}
-                    className="px-6 py-3 border border-slate-300 text-base font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Reset
-                  </button>
-                )}
               </div>
                {!apiKeys.gemini && (
                   <p className="text-center text-sm text-amber-700 bg-amber-50 p-3 rounded-md">
-                    Please add your Gemini API Key in the settings (top right) to enable generation.
+                    Please add your Gemini API Key in settings to enable generation.
                   </p>
                 )}
             </form>
           </div>
           
-          {/* Right Column: Output */}
-          <div className="bg-white p-8 rounded-xl shadow-lg relative min-h-[500px] flex flex-col justify-center">
-            <h2 className="text-xl font-semibold text-slate-800 mb-6 absolute top-8 left-8">2. Generated Listing</h2>
-            <div className="mt-12">
-              {isLoading && (
-                <div className="flex flex-col items-center justify-center text-center text-slate-500">
-                  <SparklesIcon className="h-12 w-12 text-indigo-500 animate-spin" />
-                  <p className="mt-4 font-semibold">Generating your listing...</p>
-                  <p className="text-sm mt-1">This may take a moment. The AI is crafting the perfect description.</p>
-                </div>
-              )}
-              {error && (
-                <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">
-                  <h3 className="font-semibold">Error</h3>
-                  <p className="text-sm mt-1">{error}</p>
-                </div>
-              )}
-              {listing && !isLoading && (
-                <GeneratedListing 
-                  listing={listing}
-                  apiKeys={apiKeys}
-                  isEbayConfigured={isEbayConfigured}
-                  isTwitterConfigured={isTwitterConfigured}
-                />
-              )}
-              {!listing && !isLoading && !error && (
-                 <div className="text-center text-slate-400">
-                  <p>Your generated listing will appear here.</p>
-                </div>
-              )}
-            </div>
+          <div className="bg-white p-8 rounded-xl shadow-lg">
+            <ListingHistory
+              listings={filteredAndSortedListings}
+              apiKeys={apiKeys}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              sortOrder={sortOrder}
+              setSortOrder={setSortOrder}
+              filterCategory={filterCategory}
+              setFilterCategory={setFilterCategory}
+              availableCategories={availableCategories}
+              onDelete={handleDeleteListing}
+              onClear={handleClearHistory}
+              isEbayConfigured={isEbayConfigured}
+              isTwitterConfigured={isTwitterConfigured}
+            />
           </div>
         </div>
       </main>
@@ -257,8 +300,6 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-// --- Settings Modal Component ---
 
 interface SettingsModalProps {
   initialKeys: ApiKeys;
@@ -329,8 +370,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl transform transition-all" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <div className="flex items-center space-x-3">
             <SettingsIcon className="h-6 w-6 text-slate-700"/>
