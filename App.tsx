@@ -1,345 +1,209 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { generateListing } from './services/geminiService';
-import type { Listing } from './types';
-import { fileToBase64 } from './utils/fileUtils';
+import React, { useState } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { GeneratedListing } from './components/GeneratedListing';
-import { LoadingSpinner, UploadIcon, SettingsIcon } from './components/icons';
+import { UploadIcon, SparklesIcon } from './components/icons';
+import { generateListing } from './services/geminiService';
+import type { Listing } from './types';
 
-const MAX_IMAGES = 4;
-
-export default function App() {
-  const [productName, setProductName] = useState<string>('');
-  const [productDescription, setProductDescription] = useState<string>('');
+const App: React.FC = () => {
   const [images, setImages] = useState<File[]>([]);
-  const [generatedListing, setGeneratedListing] = useState<Listing | null>(null);
+  const [notes, setNotes] = useState<string>('');
+  const [listing, setListing] = useState<Listing | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   
-  // API Keys State
-  const [apiKey, setApiKey] = useState<string>('');
-  const [ebayToken, setEbayToken] = useState<string>('');
-  const [twitterApiKey, setTwitterApiKey] = useState<string>('');
-  const [twitterApiSecret, setTwitterApiSecret] = useState<string>('');
-  const [twitterAccessToken, setTwitterAccessToken] = useState<string>('');
-  const [twitterAccessTokenSecret, setTwitterAccessTokenSecret] = useState<string>('');
+  // Dummy config values, in a real app these would come from user settings
+  const isEbayConfigured = true;
+  const isTwitterConfigured = true;
 
-  // Temp state for modal inputs
-  const [tempApiKey, setTempApiKey] = useState<string>('');
-  const [tempEbayToken, setTempEbayToken] = useState<string>('');
-  const [tempTwitterApiKey, setTempTwitterApiKey] = useState<string>('');
-  const [tempTwitterApiSecret, setTempTwitterApiSecret] = useState<string>('');
-  const [tempTwitterAccessToken, setTempTwitterAccessToken] = useState<string>('');
-  const [tempTwitterAccessTokenSecret, setTempTwitterAccessTokenSecret] = useState<string>('');
-
-  useEffect(() => {
-    const storedApiKey = localStorage.getItem('gemini_api_key') || '';
-    const storedEbayToken = localStorage.getItem('ebay_oauth_token') || '';
-    const storedTwitterApiKey = localStorage.getItem('twitter_api_key') || '';
-    const storedTwitterApiSecret = localStorage.getItem('twitter_api_secret') || '';
-    const storedTwitterAccessToken = localStorage.getItem('twitter_access_token') || '';
-    const storedTwitterAccessTokenSecret = localStorage.getItem('twitter_access_token_secret') || '';
-    
-    setApiKey(storedApiKey);
-    setEbayToken(storedEbayToken);
-    setTwitterApiKey(storedTwitterApiKey);
-    setTwitterApiSecret(storedTwitterApiSecret);
-    setTwitterAccessToken(storedTwitterAccessToken);
-    setTwitterAccessTokenSecret(storedTwitterAccessTokenSecret);
-
-    if (!storedApiKey) {
-      setIsSettingsOpen(true); // Open settings on first load if no key
+  const handleFileChange = (files: FileList | null) => {
+    if (files) {
+      const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+      setImages(prev => [...prev, ...newFiles].slice(0, 4)); // Limit to 4 images
     }
-  }, []);
+  };
   
-  const handleSaveCredentials = () => {
-    localStorage.setItem('gemini_api_key', tempApiKey);
-    localStorage.setItem('ebay_oauth_token', tempEbayToken);
-    localStorage.setItem('twitter_api_key', tempTwitterApiKey);
-    localStorage.setItem('twitter_api_secret', tempTwitterApiSecret);
-    localStorage.setItem('twitter_access_token', tempTwitterAccessToken);
-    localStorage.setItem('twitter_access_token_secret', tempTwitterAccessTokenSecret);
-    
-    setApiKey(tempApiKey);
-    setEbayToken(tempEbayToken);
-    setTwitterApiKey(tempTwitterApiKey);
-    setTwitterApiSecret(tempTwitterApiSecret);
-    setTwitterAccessToken(tempTwitterAccessToken);
-    setTwitterAccessTokenSecret(tempTwitterAccessTokenSecret);
-    
-    setIsSettingsOpen(false);
-    setError(null); // Clear previous errors
+  const handleRemoveImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
-  const handleOpenSettings = () => {
-    setTempApiKey(apiKey);
-    setTempEbayToken(ebayToken);
-    setTempTwitterApiKey(twitterApiKey);
-    setTempTwitterApiSecret(twitterApiSecret);
-    setTempTwitterAccessToken(twitterAccessToken);
-    setTempTwitterAccessTokenSecret(twitterAccessTokenSecret);
-    setIsSettingsOpen(true);
-  };
-
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      const newFiles = Array.from(event.target.files);
-      const combinedFiles = [...images, ...newFiles].slice(0, MAX_IMAGES);
-      setImages(combinedFiles);
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
     }
   };
 
-  const handleRemoveImage = useCallback((indexToRemove: number) => {
-    setImages(prevImages => prevImages.filter((_, index) => index !== indexToRemove));
-  }, []);
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    setIsDragging(false);
+  };
+  
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileChange(e.dataTransfer.files);
+      e.dataTransfer.clearData();
+    }
+  };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!productName || images.length === 0) {
-      setError('Please provide a product name and at least one image.');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (images.length === 0) {
+      setError('Please upload at least one image.');
       return;
     }
-    if (!apiKey) {
-      setError('Please set your Gemini API key in the settings.');
-      setIsSettingsOpen(true);
-      return;
-    }
-
+    
     setIsLoading(true);
     setError(null);
-    setGeneratedListing(null);
+    setListing(null);
 
     try {
-      const imagePromises = images.map(async (file) => {
-        const base64Data = await fileToBase64(file);
-        return {
-          mimeType: file.type,
-          data: base64Data,
-        };
-      });
-
-      const imagePayloads = await Promise.all(imagePromises);
-      const isTwitterConfigured = !!(twitterApiKey && twitterApiSecret && twitterAccessToken && twitterAccessTokenSecret);
-      const result = await generateListing(
-        productName, 
-        productDescription, 
-        imagePayloads, 
-        !!ebayToken, 
-        isTwitterConfigured
-      );
-      setGeneratedListing(result);
-    } catch (e) {
-      console.error(e);
-      if (e instanceof Error) {
-        setError(e.message);
+      const generatedData = await generateListing(images, notes);
+      setListing(generatedData);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
       } else {
-        setError('An unknown error occurred while generating the listing.');
+        setError('An unknown error occurred.');
       }
     } finally {
       setIsLoading(false);
     }
   };
   
-  const isEbayConfigured = !!ebayToken;
-  const isTwitterConfigured = !!(twitterApiKey && twitterApiSecret && twitterAccessToken && twitterAccessTokenSecret);
+  const handleReset = () => {
+    setImages([]);
+    setNotes('');
+    setListing(null);
+    setError(null);
+    setIsLoading(false);
+  };
 
   return (
-    <>
-      {isSettingsOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg relative overflow-y-auto max-h-[90vh]">
-            <h2 className="text-xl font-semibold text-slate-800">API Credentials</h2>
-            <p className="text-sm text-slate-500 mt-2">
-              Credentials are stored in your browser's local storage and are not sent to our servers.
-            </p>
-            
-            <div className="mt-6 space-y-6">
-              {/* Gemini Settings */}
-              <fieldset className="border-t pt-4">
-                <legend className="text-lg font-semibold text-slate-800">Gemini</legend>
-                <p className="text-sm text-slate-500 mb-3">Required for generating all content.</p>
-                <label htmlFor="apiKey" className="block text-sm font-medium text-slate-700">Gemini API Key</label>
-                <input id="apiKey" type="password" value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} placeholder="Enter your API key" className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-              </fieldset>
-
-              {/* eBay Settings */}
-              <fieldset className="border-t pt-4">
-                <legend className="text-lg font-semibold text-slate-800">eBay (Optional)</legend>
-                <p className="text-sm text-slate-500 mb-3">Required to generate eBay-specific content.</p>
-                <label htmlFor="ebayToken" className="block text-sm font-medium text-slate-700">eBay OAuth Token</label>
-                <input id="ebayToken" type="password" value={tempEbayToken} onChange={(e) => setTempEbayToken(e.target.value)} placeholder="Enter your eBay OAuth Token" className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-              </fieldset>
-              
-              {/* Twitter Settings */}
-              <fieldset className="border-t pt-4">
-                <legend className="text-lg font-semibold text-slate-800">X.com / Twitter (Optional)</legend>
-                <p className="text-sm text-slate-500 mb-3">Required to generate Twitter-specific content.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="twitterApiKey" className="block text-sm font-medium text-slate-700">API Key</label>
-                        <input id="twitterApiKey" type="password" value={tempTwitterApiKey} onChange={(e) => setTempTwitterApiKey(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-                    </div>
-                    <div>
-                        <label htmlFor="twitterApiSecret" className="block text-sm font-medium text-slate-700">API Key Secret</label>
-                        <input id="twitterApiSecret" type="password" value={tempTwitterApiSecret} onChange={(e) => setTempTwitterApiSecret(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-                    </div>
-                    <div>
-                        <label htmlFor="twitterAccessToken" className="block text-sm font-medium text-slate-700">Access Token</label>
-                        <input id="twitterAccessToken" type="password" value={tempTwitterAccessToken} onChange={(e) => setTempTwitterAccessToken(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-                    </div>
-                    <div>
-                        <label htmlFor="twitterAccessTokenSecret" className="block text-sm font-medium text-slate-700">Access Token Secret</label>
-                        <input id="twitterAccessTokenSecret" type="password" value={tempTwitterAccessTokenSecret} onChange={(e) => setTempTwitterAccessTokenSecret(e.target.value)} className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
-                    </div>
-                </div>
-              </fieldset>
-            </div>
-
-            <div className="mt-8 flex justify-end gap-3 border-t pt-4">
-              <button onClick={() => setIsSettingsOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-300">
-                Cancel
-              </button>
-              <button onClick={handleSaveCredentials} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" disabled={!tempApiKey}>
-                Save Credentials
-              </button>
-            </div>
-          </div>
+    <div className="bg-slate-50 min-h-screen font-sans">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center space-x-3">
+          <SparklesIcon className="h-8 w-8 text-indigo-600" />
+          <h1 className="text-2xl font-bold text-slate-900">AI Listing Generator</h1>
         </div>
-      )}
-      <div className="min-h-screen bg-slate-100/50 text-slate-800 font-sans p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto relative">
-          <div className="absolute top-0 right-0">
-            <button onClick={handleOpenSettings} className="p-2 rounded-full bg-white/60 hover:bg-white text-slate-600 hover:text-indigo-600 transition-colors shadow-sm backdrop-blur-sm" aria-label="Settings">
-              <SettingsIcon className="h-6 w-6" />
-            </button>
-          </div>
+      </header>
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          
+          {/* Left Column: Input Form */}
+          <div className="bg-white p-8 rounded-xl shadow-lg">
+            <h2 className="text-xl font-semibold text-slate-800 mb-6">1. Upload Your Product Images</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              
+              <div 
+                className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-indigo-600 bg-indigo-50' : 'border-slate-300 hover:border-slate-400'}`}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragEvents}
+                onDrop={handleDrop}
+              >
+                <UploadIcon className="mx-auto h-12 w-12 text-slate-400" />
+                <label htmlFor="file-upload" className="relative cursor-pointer">
+                  <span className="mt-2 block text-sm font-medium text-indigo-600">
+                    Click to upload
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500"> or drag and drop</span>
+                </label>
+                <input 
+                  id="file-upload" 
+                  name="file-upload" 
+                  type="file" 
+                  className="sr-only" 
+                  multiple 
+                  accept="image/*"
+                  onChange={e => handleFileChange(e.target.files)}
+                />
+                <p className="text-xs text-slate-500 mt-2">PNG, JPG, etc. Max 4 images.</p>
+              </div>
 
-          <header className="text-center mb-10">
-            <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 tracking-tight">Marketplace Listing Generator</h1>
-            <p className="mt-3 text-lg text-slate-600 max-w-2xl mx-auto">
-              Instantly create compelling marketplace listings with AI. Just add your product details and images to get started.
-            </p>
-          </header>
+              <ImagePreview images={images} onRemove={handleRemoveImage} />
+              
+              <div>
+                <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-2">
+                  Optional Notes
+                </label>
+                <textarea
+                  id="notes"
+                  name="notes"
+                  rows={4}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-slate-900 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                  placeholder="e.g., 'Slight scratch on the back', 'Never opened', 'Comes with original box'"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-            {/* Input Form Section */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
-              <h2 className="text-2xl font-semibold mb-6 text-slate-800">1. Enter Product Details</h2>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label htmlFor="productName" className="block text-sm font-medium text-slate-700 mb-1">
-                    Product Name
-                  </label>
-                  <input
-                    id="productName"
-                    type="text"
-                    value={productName}
-                    onChange={(e) => setProductName(e.target.value)}
-                    placeholder="e.g., Vintage Leather Backpack"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="productDescription" className="block text-sm font-medium text-slate-700 mb-1">
-                    Product Description (Optional)
-                  </label>
-                  <textarea
-                    id="productDescription"
-                    value={productDescription}
-                    onChange={(e) => setProductDescription(e.target.value)}
-                    placeholder="Describe key features, condition, and dimensions..."
-                    rows={4}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Upload Images (up to {MAX_IMAGES})
-                  </label>
-                  <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-md">
-                    <div className="space-y-1 text-center">
-                      <UploadIcon />
-                      <div className="flex text-sm text-slate-600">
-                        <label
-                          htmlFor="file-upload"
-                          className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
-                        >
-                          <span>Upload files</span>
-                          <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/png, image/jpeg, image/webp" onChange={handleImageChange} disabled={images.length >= MAX_IMAGES} />
-                        </label>
-                        <p className="pl-1">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-slate-500">PNG, JPG, WEBP up to 10MB</p>
-                    </div>
-                  </div>
-                </div>
-
-                <ImagePreview images={images} onRemove={handleRemoveImage} />
-                
-                <button
+              <div className="flex items-center space-x-4">
+                 <button
                   type="submit"
-                  disabled={isLoading || !productName || images.length === 0 || !apiKey}
-                  className="w-full flex justify-center items-center gap-2 py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors duration-300"
+                  disabled={isLoading || images.length === 0}
+                  className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isLoading ? (
-                    <>
-                      <LoadingSpinner />
-                      Generating...
-                    </>
-                  ) : (
-                    'Generate Listing'
-                  )}
+                  {isLoading ? 'Generating...' : 'Generate Listing'}
+                  <SparklesIcon className={`ml-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
-              </form>
-            </div>
-
-            {/* Output Section */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
-              <h2 className="text-2xl font-semibold mb-6 text-slate-800">2. Generated Listing</h2>
-              <div className="h-full min-h-[300px] flex flex-col">
-                {isLoading && (
-                    <div className="text-center space-y-4 flex-grow flex flex-col justify-center">
-                      <LoadingSpinner className="mx-auto h-12 w-12 text-indigo-500"/>
-                      <p className="text-slate-600 animate-pulse">AI is crafting the perfect listing...</p>
-                    </div>
-                )}
-                {error && (
-                  <div className="text-center p-4 bg-red-100 border border-red-300 text-red-700 rounded-lg">
-                    <p className="font-semibold">An Error Occurred</p>
-                    <p className="text-sm">{error}</p>
-                  </div>
-                )}
-                {generatedListing && !isLoading && (
-                  <GeneratedListing 
-                    listing={generatedListing}
-                    isEbayConfigured={isEbayConfigured}
-                    isTwitterConfigured={isTwitterConfigured}
-                  />
-                )}
-                {!isLoading && !generatedListing && !error && (
-                  <div className="text-center text-slate-500 flex-grow flex flex-col justify-center">
-                    {apiKey ? (
-                      <p>Your generated listing will appear here.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="font-semibold text-amber-600">API Key Required</p>
-                        <p>Please add your Gemini API key in the settings to begin.</p>
-                        <button onClick={handleOpenSettings} className="mt-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
-                          Open Settings
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                {(listing || error) && (
+                   <button
+                    type="button"
+                    onClick={handleReset}
+                    className="px-6 py-3 border border-slate-300 text-base font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Reset
+                  </button>
                 )}
               </div>
+            </form>
+          </div>
+          
+          {/* Right Column: Output */}
+          <div className="bg-white p-8 rounded-xl shadow-lg relative min-h-[500px] flex flex-col justify-center">
+            <h2 className="text-xl font-semibold text-slate-800 mb-6 absolute top-8 left-8">2. Generated Listing</h2>
+            <div className="mt-12">
+              {isLoading && (
+                <div className="flex flex-col items-center justify-center text-center text-slate-500">
+                  <SparklesIcon className="h-12 w-12 text-indigo-500 animate-spin" />
+                  <p className="mt-4 font-semibold">Generating your listing...</p>
+                  <p className="text-sm mt-1">This may take a moment. The AI is crafting the perfect description.</p>
+                </div>
+              )}
+              {error && (
+                <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">
+                  <h3 className="font-semibold">Error</h3>
+                  <p className="text-sm mt-1">{error}</p>
+                </div>
+              )}
+              {listing && !isLoading && (
+                <GeneratedListing 
+                  listing={listing}
+                  isEbayConfigured={isEbayConfigured}
+                  isTwitterConfigured={isTwitterConfigured}
+                />
+              )}
+              {!listing && !isLoading && !error && (
+                 <div className="text-center text-slate-400">
+                  <p>Your generated listing will appear here.</p>
+                </div>
+              )}
             </div>
           </div>
+
         </div>
-      </div>
-    </>
+      </main>
+    </div>
   );
-}
+};
+
+export default App;
