@@ -7,6 +7,7 @@ export interface Listing {
     quickSale: number;
     marketValue: number;
     premium: number;
+    justification: string;
   };
   selectedPrice: number;
   category: string;

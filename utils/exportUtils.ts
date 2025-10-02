@@ -27,7 +27,7 @@ function escapeCsvCell(cell: any): string {
 function convertToCsv(data: Listing[]): string {
     const headers = [
         'ID', 'Created At', 'Title', 'Description', 'Selected Price', 'Category', 
-        'Price Suggestion (Quick Sale)', 'Price Suggestion (Market Value)', 'Price Suggestion (Premium)',
+        'Price Suggestion (Quick Sale)', 'Price Suggestion (Market Value)', 'Price Suggestion (Premium)', 'Price Justification',
         'eBay Title', 'eBay HTML Description', 'Twitter Tweet'
     ];
     
@@ -41,6 +41,7 @@ function convertToCsv(data: Listing[]): string {
         listing.priceSuggestion.quickSale,
         listing.priceSuggestion.marketValue,
         listing.priceSuggestion.premium,
+        listing.priceSuggestion.justification,
         listing.ebay?.title,
         listing.ebay?.descriptionHtml,
         listing.twitter?.tweet,
@@ -58,7 +59,7 @@ export const exportAsCsv = (data: Listing[], xls = false) => {
 
 // --- PDF Export ---
 export const exportAsPdf = (data: Listing[]) => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'landscape' });
     
     const formatCurrency = (price: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
 
@@ -66,12 +67,12 @@ export const exportAsPdf = (data: Listing[]) => {
         listing.title,
         listing.category,
         formatCurrency(listing.selectedPrice),
-        `${formatCurrency(listing.priceSuggestion.quickSale)} / ${formatCurrency(listing.priceSuggestion.marketValue)} / ${formatCurrency(listing.priceSuggestion.premium)}`,
+        listing.priceSuggestion.justification,
         new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
     ]);
 
     autoTable(doc, {
-        head: [['Title', 'Category', 'Selected Price', 'Price Suggestions (QS/MV/P)', 'Date']],
+        head: [['Title', 'Category', 'Selected Price', 'Pricing Rationale', 'Date']],
         body: tableData,
         didDrawPage: (data) => {
             doc.setFontSize(20);
@@ -79,10 +80,18 @@ export const exportAsPdf = (data: Listing[]) => {
         },
         styles: {
             fontSize: 8,
+            cellPadding: 2,
         },
         headStyles: {
             fillColor: [30, 41, 59], // slate-800
         },
+        columnStyles: {
+            0: { cellWidth: 50 },
+            1: { cellWidth: 25 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 'auto' },
+            4: { cellWidth: 25 },
+        }
     });
 
     doc.save('listings.pdf');
@@ -116,6 +125,7 @@ CREATE TABLE listings (
     priceSuggestionQuickSale DECIMAL(10, 2),
     priceSuggestionMarketValue DECIMAL(10, 2),
     priceSuggestionPremium DECIMAL(10, 2),
+    priceJustification TEXT,
     ebayTitle TEXT,
     ebayDescriptionHtml TEXT,
     twitterTweet TEXT
@@ -135,14 +145,15 @@ CREATE TABLE listings (
             escapeSqlValue(listing.priceSuggestion.quickSale),
             escapeSqlValue(listing.priceSuggestion.marketValue),
             escapeSqlValue(listing.priceSuggestion.premium),
+            escapeSqlValue(listing.priceSuggestion.justification),
             escapeSqlValue(listing.ebay?.title),
             escapeSqlValue(listing.ebay?.descriptionHtml),
             escapeSqlValue(listing.twitter?.tweet),
         ].join(', ');
         
-        sqlString += `INSERT INTO listings (id, createdAt, title, description, selectedPrice, category, priceSuggestionQuickSale, priceSuggestionMarketValue, priceSuggestionPremium, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
+        sqlString += `INSERT INTO listings (id, createdAt, title, description, selectedPrice, category, priceSuggestionQuickSale, priceSuggestionMarketValue, priceSuggestionPremium, priceJustification, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
     });
     
-    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-8;' });
+    const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-t;' });
     triggerDownload(blob, 'listings.sql');
 };

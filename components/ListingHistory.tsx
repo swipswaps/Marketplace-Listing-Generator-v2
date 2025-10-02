@@ -88,17 +88,18 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex justify-between items-start mb-4">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-slate-200 mb-4">
                 <div>
                     <h2 className="text-xl font-semibold text-slate-800">2. Listing History</h2>
-                    <p className="text-sm text-slate-500">Manage and export your generated listings.</p>
+                    <p className="text-sm text-slate-500 mt-1">Manage and export your generated listings.</p>
                 </div>
                 {listings.length > 0 && (
                      <div className="flex items-center space-x-2 flex-shrink-0">
                         <ExportDropdown listings={listings} />
                         <button
                             onClick={onClear}
-                            className="inline-flex items-center justify-center rounded-md border border-slate-300 shadow-sm px-3 py-2 bg-white text-sm font-medium text-slate-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 focus:outline-none"
+                            className="inline-flex items-center justify-center rounded-md border border-slate-300 shadow-sm p-2 bg-white text-sm font-medium text-slate-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 focus:outline-none"
                             aria-label="Clear all listings"
                         >
                             <DeleteIcon className="h-5 w-5" />
@@ -108,49 +109,51 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
             </div>
             
             {/* Controls */}
-            <div className="space-y-4 mb-4">
-                <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <SearchIcon className="h-5 w-5 text-slate-400" />
+            {listings.length > 0 && (
+                <div className="space-y-4 mb-4">
+                    <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <SearchIcon className="h-5 w-5 text-slate-400" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search listings..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full rounded-md border-slate-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Search listings..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full rounded-md border-slate-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="sort-order" className="block text-sm font-medium text-slate-700">Sort by</label>
+                            <select
+                                id="sort-order"
+                                value={sortOrder}
+                                onChange={(e) => setSortOrder(e.target.value)}
+                                className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                            >
+                                <option value="date-desc">Date: Newest</option>
+                                <option value="date-asc">Date: Oldest</option>
+                                <option value="price-desc">Price: High-Low</option>
+                                <option value="price-asc">Price: Low-High</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="filter-category" className="block text-sm font-medium text-slate-700">Category</label>
+                            <select
+                                id="filter-category"
+                                value={filterCategory}
+                                onChange={(e) => setFilterCategory(e.target.value)}
+                                className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                            >
+                                {availableCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                     <div>
-                        <label htmlFor="sort-order" className="block text-sm font-medium text-slate-700">Sort by</label>
-                        <select
-                            id="sort-order"
-                            value={sortOrder}
-                            onChange={(e) => setSortOrder(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                        >
-                            <option value="date-desc">Date: Newest</option>
-                            <option value="date-asc">Date: Oldest</option>
-                            <option value="price-desc">Price: High-Low</option>
-                            <option value="price-asc">Price: Low-High</option>
-                        </select>
-                    </div>
-                     <div>
-                        <label htmlFor="filter-category" className="block text-sm font-medium text-slate-700">Category</label>
-                        <select
-                            id="filter-category"
-                            value={filterCategory}
-                            onChange={(e) => setFilterCategory(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                        >
-                            {availableCategories.map(cat => (
-                                <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {/* List */}
             <div className="flex-grow overflow-y-auto space-y-3 pr-2 -mr-2">

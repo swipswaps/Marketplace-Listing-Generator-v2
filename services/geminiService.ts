@@ -14,7 +14,7 @@ const baseSchemaProperties = {
   },
   priceSuggestion: {
     type: Type.OBJECT,
-    description: "An object containing three distinct price suggestions based on market data of sold items.",
+    description: "An object containing three distinct price suggestions and a justification based on market data of sold items.",
     properties: {
         quickSale: {
             type: Type.NUMBER,
@@ -27,9 +27,13 @@ const baseSchemaProperties = {
         premium: {
             type: Type.NUMBER,
             description: "A premium price for buyers looking for quality, often for items in mint condition or with desirable attributes."
+        },
+        justification: {
+            type: Type.STRING,
+            description: "A brief (1-2 sentences) justification for the pricing, referencing comparable sold items or market trends. This is crucial for user trust."
         }
     },
-    required: ["quickSale", "marketValue", "premium"]
+    required: ["quickSale", "marketValue", "premium", "justification"]
   },
   category: {
     type: Type.STRING,
@@ -90,10 +94,13 @@ export const generateListing = async (
   let promptInstructions = `Act as an expert marketplace seller and copywriter. Your task is to generate 3 compelling and distinct variations of a product listing based on the provided images and user notes.
 
 **Analysis Instructions:**
-1.  **Analyze Market Data for Pricing:** This is the most critical step. Leverage your knowledge of pricing trends from *recently sold items* on marketplaces like eBay to generate three specific price points for each listing variation in the 'priceSuggestion' object.
+1.  **CRITICAL - Analyze Market Data for Pricing & Justification:** Your primary function is to act as a market research expert. Your pricing suggestions **must** be grounded in real-world data from *recently sold items* on marketplaces like eBay.
     -   'quickSale': A competitive price to attract buyers looking for a deal.
     -   'marketValue': The most likely selling price based on comparable sold items.
     -   'premium': A price for a top-quality item, perhaps new or in mint condition with all accessories.
+    -   **MANDATORY 'justification'**: Provide a concrete, data-driven justification (1-2 sentences) for your pricing. This is the most important output. **Do not use vague language.**
+        -   **GOOD EXAMPLE**: "Sold listings for this model in similar 'used' condition on eBay range from $210-$240. The market value price reflects this. The premium price is justified by the included original box."
+        -   **BAD EXAMPLE**: "The prices are based on the item's condition and features." (This is too generic and unacceptable).
 2.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
 3.  **Identify Details from Notes:** Pay close attention to the user's notes. Explicitly mention any included accessories (e.g., "comes with original box and charger") or noted defects (e.g., "slight scratch on the back corner") in the main description.
 

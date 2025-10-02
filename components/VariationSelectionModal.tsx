@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Listing } from '../types';
-import { CloseIcon, CheckIcon, SparklesIcon } from './icons';
+import { CloseIcon, CheckIcon, SparklesIcon, InfoIcon } from './icons';
 
 interface VariationSelectionModalProps {
   variations: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[];
@@ -59,7 +59,7 @@ export const VariationSelectionModal: React.FC<VariationSelectionModalProps> = (
                 </header>
 
                 <p className="px-6 py-4 text-slate-600 text-center bg-white border-b border-slate-200 flex-shrink-0">
-                    We've generated a few variations. Pick your favorite price for each, then add them to your history.
+                    We've generated a few variations with market-based price suggestions. Pick your favorite price for each, then add them to your history.
                 </p>
                 
                 <main className="flex-grow p-6 lg:p-8 overflow-y-auto">
@@ -79,7 +79,17 @@ export const VariationSelectionModal: React.FC<VariationSelectionModalProps> = (
                                             <PriceButton label="Premium" price={variation.priceSuggestion.premium} isSelected={currentSelectedPrice === variation.priceSuggestion.premium} onClick={() => handlePriceSelect(index, variation.priceSuggestion.premium)} />
                                         </div>
 
-                                        <p className="mt-4 text-sm text-slate-600 line-clamp-4 flex-grow">
+                                        <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                            <div className="flex items-start space-x-2.5">
+                                                <InfoIcon className="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <h4 className="text-sm font-semibold text-slate-800">Pricing Rationale</h4>
+                                                    <p className="text-xs text-slate-600 mt-1">{variation.priceSuggestion.justification}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <p className="mt-4 text-sm text-slate-600 line-clamp-3 flex-grow">
                                             {variation.description.split('\n').filter(p => p.trim()).map((p, i) => <React.Fragment key={i}>{p}<br/></React.Fragment>)}
                                         </p>
                                     </div>
