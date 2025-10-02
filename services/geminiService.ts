@@ -54,42 +54,53 @@ const twitterSchemaProperty = {
 export const generateListing = async (
   images: File[],
   notes: string,
-  apiKey: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
 ): Promise<Listing> => {
-  if (!apiKey) {
-    throw new Error("Gemini API key is not provided.");
+  if (!process.env.API_KEY) {
+    throw new Error("Gemini API key is not configured in environment variables.");
   }
   
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
   }
   
-  // Dynamically construct schema and prompt
+  // Dynamically construct schema and a more detailed prompt
   const finalSchemaProperties: any = { ...baseSchemaProperties };
   const finalRequired = ["title", "description", "price", "category"];
-  let promptInstructions = `Based on the following images and user notes, generate a detailed product listing.
-    
-User Notes: "${notes || "No additional notes."}"
+  
+  let promptInstructions = `Act as an expert marketplace seller. Your task is to generate a compelling and accurate product listing based on the provided images and user notes.
 
-Generate the response in JSON format according to the provided schema.
-The description should be well-written and persuasive.
-The price should be a reasonable market estimate.
+**Analysis Instructions:**
+1.  **Analyze Market Data:** Leverage your knowledge of pricing trends from recently sold items on marketplaces like eBay and the original manufacturer's specifications to inform your output. The price should be a competitive market estimate.
+2.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
+3.  **Identify Details from Notes:** Pay close attention to the user's notes. Explicitly mention any included accessories (e.g., "comes with original box and charger") or noted defects (e.g., "slight scratch on the back corner") in the main description.
+
+**User Provided Information:**
+-   **Notes:** "${notes || "No additional notes provided."}"
+
+**Output Format & Platform-Specific Instructions:**
+-   Generate the response **only** in JSON format that adheres to the provided schema.
+-   The main description should be detailed, persuasive, and structured with paragraphs.
 `;
 
+  const platformInstructions: string[] = [];
   if (isEbayConfigured) {
     finalSchemaProperties.ebay = ebaySchemaProperty;
     finalRequired.push("ebay");
-    promptInstructions += `The eBay title should be optimized with keywords. The eBay description should be in clean HTML.\n`;
+    platformInstructions.push("- For the 'ebay' object, create a keyword-optimized title and a well-structured HTML description.");
   }
   
   if (isTwitterConfigured) {
     finalSchemaProperties.twitter = twitterSchemaProperty;
     finalRequired.push("twitter");
-    promptInstructions += `The Twitter post should be concise and include hashtags.\n`;
+    platformInstructions.push("- For the 'twitter' object, create a concise, engaging tweet with relevant hashtags.");
+  }
+
+  if (platformInstructions.length > 0) {
+    promptInstructions += `\n${platformInstructions.join('\n')}`;
   }
   
   const listingSchema = {
@@ -129,12 +140,12 @@ The price should be a reasonable market estimate.
 };
 
 
-export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
-  if (!apiKey) {
+export const verifyGeminiApiKey = async (): Promise<boolean> => {
+  if (!process.env.API_KEY) {
     return false;
   }
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     // Make a lightweight, non-streaming call to check for authentication.
     await ai.models.generateContent({
       model: "gemini-2.5-flash",

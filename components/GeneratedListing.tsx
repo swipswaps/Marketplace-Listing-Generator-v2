@@ -5,7 +5,6 @@ import { postToX } from '../services/twitterService';
 import { DeleteIcon } from './icons';
 
 interface ApiKeys {
-  gemini: string;
   ebay: string;
   twitter: {
     apiKey: string;

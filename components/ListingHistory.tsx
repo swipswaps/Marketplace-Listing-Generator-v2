@@ -5,7 +5,6 @@ import { SearchIcon, FilterIcon, DownloadIcon, DeleteIcon } from './icons';
 import { exportAsPdf, exportAsCsv, exportAsSql } from '../utils/exportUtils';
 
 interface ApiKeys {
-    gemini: string;
     ebay: string;
     twitter: {
       apiKey: string;
