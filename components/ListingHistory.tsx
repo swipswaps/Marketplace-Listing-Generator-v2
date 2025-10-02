@@ -88,8 +88,17 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
 
     return (
         <div className="flex flex-col h-full">
-            <h2 className="text-xl font-semibold text-slate-800">2. Listing History</h2>
-            <p className="text-sm text-slate-500 mb-4">Manage and export your generated listings.</p>
+            <div className="flex justify-between items-start mb-4">
+                <div>
+                    <h2 className="text-xl font-semibold text-slate-800">2. Listing History</h2>
+                    <p className="text-sm text-slate-500">Manage and export your generated listings.</p>
+                </div>
+                {listings.length > 0 && (
+                     <div className="flex items-center space-x-2 flex-shrink-0">
+                        <ExportDropdown listings={listings} />
+                    </div>
+                )}
+            </div>
             
             {/* Controls */}
             <div className="space-y-4 mb-4">
@@ -158,8 +167,7 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
 
              {/* Footer Actions */}
              {props.listings.length > 0 && (
-                <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                   <ExportDropdown listings={props.listings} />
+                <div className="mt-4 pt-4 border-t flex justify-end items-center">
                    <button
                         onClick={onClear}
                         className="inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800"
