@@ -56,12 +56,13 @@ export const generateListing = async (
   notes: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
+  geminiApiKey: string
 ): Promise<Omit<Listing, 'id' | 'createdAt'>[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("Gemini API key is not configured in environment variables.");
+  if (!geminiApiKey) {
+    throw new Error("Gemini API key is not configured. Please add it in the settings.");
   }
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
@@ -152,12 +153,12 @@ export const generateListing = async (
 };
 
 
-export const verifyGeminiApiKey = async (): Promise<boolean> => {
-  if (!process.env.API_KEY) {
+export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
+  if (!apiKey) {
     return false;
   }
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     // Make a lightweight, non-streaming call to check for authentication.
     await ai.models.generateContent({
       model: "gemini-2.5-flash",

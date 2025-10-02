@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { ListingHistory } from './components/ListingHistory';
 import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
-import { generateListing } from './services/geminiService';
+import { generateListing, verifyGeminiApiKey } from './services/geminiService';
 import { verifyEbayToken } from './services/ebayService';
 import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
 
 interface ApiKeys {
+  gemini: string;
   ebay: string;
   twitter: {
     apiKey: string;
@@ -33,6 +34,7 @@ const App: React.FC = () => {
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys>({
+    gemini: '',
     ebay: '',
     twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
   });
@@ -47,7 +49,6 @@ const App: React.FC = () => {
     const savedKeys = localStorage.getItem('apiKeys');
     if (savedKeys) {
       const parsedKeys = JSON.parse(savedKeys);
-      delete parsedKeys.gemini;
       setApiKeys(parsedKeys);
     }
     const savedListings = localStorage.getItem('listings');
@@ -61,6 +62,7 @@ const App: React.FC = () => {
     localStorage.setItem('listings', JSON.stringify(listings));
   }, [listings]);
   
+  const isGeminiConfigured = !!apiKeys.gemini;
   const isEbayConfigured = !!apiKeys.ebay;
   const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
 
@@ -103,6 +105,11 @@ const App: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isGeminiConfigured) {
+      setError('Please configure your Gemini API key in the settings.');
+      setIsSettingsOpen(true);
+      return;
+    }
     if (images.length === 0) {
       setError('Please upload at least one image.');
       return;
@@ -112,7 +119,7 @@ const App: React.FC = () => {
     setError(null);
     
     try {
-      const generatedData = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured);
+      const generatedData = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured, apiKeys.gemini);
       setVariations(generatedData);
       setImages([]);
       setNotes('');
@@ -313,9 +320,16 @@ type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onSave }) => {
   const [keys, setKeys] = useState<ApiKeys>(initialKeys);
   const [validationStatus, setValidationStatus] = useState({
+    gemini: 'idle' as ValidationStatus,
     ebay: 'idle' as ValidationStatus,
     twitter: 'idle' as ValidationStatus
   });
+  
+  const handleVerifyGemini = async () => {
+    setValidationStatus(prev => ({ ...prev, gemini: 'validating' }));
+    const isValid = await verifyGeminiApiKey(keys.gemini);
+    setValidationStatus(prev => ({ ...prev, gemini: isValid ? 'valid' : 'invalid' }));
+  };
 
   const handleVerifyEbay = async () => {
     setValidationStatus(prev => ({ ...prev, ebay: 'validating' }));
@@ -345,7 +359,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
     } else {
         const key = name as keyof Omit<ApiKeys, 'twitter'>;
         setKeys(prev => ({ ...prev, [key]: value }));
-        if (name === 'ebay') {
+        if (name === 'ebay' || name === 'gemini') {
            setValidationStatus(prev => ({ ...prev, [name]: 'idle' }));
         }
     }
@@ -378,12 +392,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
         </div>
         
         <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
-          {/* Gemini Info */}
-          <div className="space-y-2 p-4 bg-slate-50 rounded-lg">
+          {/* Gemini Settings */}
+          <div className="space-y-2">
             <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
-            <p className="text-sm text-slate-600">
-              The Google Gemini API key is managed securely via an environment variable (<code>process.env.API_KEY</code>) and does not need to be configured here.
-            </p>
+            <p className="text-sm text-slate-500">Required for all AI-powered features.</p>
+            <div>
+                <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
+                 <div className="flex items-center space-x-2 mt-1">
+                    <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <button onClick={handleVerifyGemini} disabled={!keys.gemini || validationStatus.gemini === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
+                    <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.gemini} /></div>
+                </div>
+                 {validationStatus.gemini === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid Gemini API Key.</p>}
+            </div>
           </div>
 
           {/* eBay Settings */}
