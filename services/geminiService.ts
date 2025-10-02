@@ -56,7 +56,7 @@ export const generateListing = async (
   notes: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
-): Promise<Listing> => {
+): Promise<Omit<Listing, 'id' | 'createdAt'>[]> => {
   if (!process.env.API_KEY) {
     throw new Error("Gemini API key is not configured in environment variables.");
   }
@@ -71,42 +71,50 @@ export const generateListing = async (
   const finalSchemaProperties: any = { ...baseSchemaProperties };
   const finalRequired = ["title", "description", "price", "category"];
   
-  let promptInstructions = `Act as an expert marketplace seller. Your task is to generate a compelling and accurate product listing based on the provided images and user notes.
+  let promptInstructions = `Act as an expert marketplace seller and copywriter. Your task is to generate 3 compelling and distinct variations of a product listing based on the provided images and user notes.
 
 **Analysis Instructions:**
-1.  **Analyze Market Data:** Leverage your knowledge of pricing trends from recently sold items on marketplaces like eBay and the original manufacturer's specifications to inform your output. The price should be a competitive market estimate.
+1.  **Analyze Market Data:** Leverage your knowledge of pricing trends from *recently sold items* on marketplaces like eBay and the original manufacturer's specifications to inform your output. Each variation should have a slightly different price reflecting a different sales strategy.
 2.  **Determine Condition:** Carefully examine the images and user notes to determine the item's condition. Use standard e-commerce condition keywords in the description (e.g., "New," "Like New," "Used," "Good Condition," "For parts/not working").
 3.  **Identify Details from Notes:** Pay close attention to the user's notes. Explicitly mention any included accessories (e.g., "comes with original box and charger") or noted defects (e.g., "slight scratch on the back corner") in the main description.
 
 **User Provided Information:**
 -   **Notes:** "${notes || "No additional notes provided."}"
 
-**Output Format & Platform-Specific Instructions:**
--   Generate the response **only** in JSON format that adheres to the provided schema.
--   The main description should be detailed, persuasive, and structured with paragraphs.
+**Output Format & Variation-Specific Instructions:**
+-   Generate the response **only** in a JSON array format that adheres to the provided schema. Each object in the array is a listing variation.
+-   **Variation 1 (Professional & High-Value):** A premium, detailed listing targeting buyers looking for quality. Use a professional tone. Price it at the higher end of the market value.
+-   **Variation 2 (Casual & Quick-Sale):** A friendly, concise listing aiming for a fast sale. Use a casual, approachable tone. Price it competitively for a quick turnaround.
+-   **Variation 3 (Benefit-Focused & Urgent):** A persuasive listing that creates a sense of urgency (e.g., "Don't miss out!"). Highlight key benefits for the buyer. The price can be mid-range.
 `;
 
   const platformInstructions: string[] = [];
   if (isEbayConfigured) {
     finalSchemaProperties.ebay = ebaySchemaProperty;
     finalRequired.push("ebay");
-    platformInstructions.push("- For the 'ebay' object, create a keyword-optimized title and a well-structured HTML description.");
+    platformInstructions.push("- For the 'ebay' object, create a keyword-optimized title and a well-structured HTML description for each variation.");
   }
   
   if (isTwitterConfigured) {
     finalSchemaProperties.twitter = twitterSchemaProperty;
     finalRequired.push("twitter");
-    platformInstructions.push("- For the 'twitter' object, create a concise, engaging tweet with relevant hashtags.");
+    platformInstructions.push("- For the 'twitter' object, create a concise, engaging tweet with relevant hashtags for each variation.");
   }
 
   if (platformInstructions.length > 0) {
-    promptInstructions += `\n${platformInstructions.join('\n')}`;
+    promptInstructions += `\n**Platform-Specific Instructions:**\n${platformInstructions.join('\n')}`;
   }
   
-  const listingSchema = {
+  const listingObjectSchema = {
     type: Type.OBJECT,
     properties: finalSchemaProperties,
     required: finalRequired,
+  };
+
+  const listingSchema = {
+    type: Type.ARRAY,
+    description: "An array of 3 distinct listing variations.",
+    items: listingObjectSchema,
   };
 
   const base64Images = await Promise.all(images.map(fileToBase64));
@@ -132,7 +140,11 @@ export const generateListing = async (
   try {
     const jsonString = response.text;
     const listingData = JSON.parse(jsonString);
-    return listingData as Listing;
+    if (!Array.isArray(listingData)) {
+      console.error("Gemini response was not an array:", listingData);
+      throw new Error("Failed to generate listing variations. The model returned an invalid format.");
+    }
+    return listingData as Omit<Listing, 'id' | 'createdAt'>[];
   } catch (e) {
     console.error("Failed to parse Gemini response:", response.text);
     throw new Error("Failed to generate listing. The model returned an invalid format.");

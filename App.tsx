@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ImagePreview } from './components/ImagePreview';
 import { ListingHistory } from './components/ListingHistory';
 import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon } from './components/icons';
-import { generateListing, verifyGeminiApiKey } from './services/geminiService';
+import { generateListing } from './services/geminiService';
 import { verifyEbayToken } from './services/ebayService';
 import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
+import { VariationSelectionModal } from './components/VariationSelectionModal';
 
 interface ApiKeys {
   ebay: string;
@@ -24,6 +25,7 @@ const App: React.FC = () => {
   
   // App State
   const [listings, setListings] = useState<Listing[]>([]);
+  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt'>[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -112,12 +114,7 @@ const App: React.FC = () => {
     
     try {
       const generatedData = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured);
-      const newListing: Listing = {
-        ...generatedData,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-      };
-      setListings(prev => [newListing, ...prev]);
+      setVariations(generatedData);
       // Reset form after successful generation
       setImages([]);
       setNotes('');
@@ -130,6 +127,15 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt'>) => {
+    const newListing: Listing = {
+      ...variation,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    };
+    setListings(prev => [newListing, ...prev]);
   };
 
   const handleDeleteListing = (id: string) => {
@@ -251,7 +257,7 @@ const App: React.FC = () => {
                   disabled={isLoading || images.length === 0}
                   className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isLoading ? 'Generating...' : 'Generate & Add to History'}
+                  {isLoading ? 'Generating...' : 'Generate Listing Variations'}
                   <SparklesIcon className={`ml-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
@@ -278,6 +284,14 @@ const App: React.FC = () => {
         </div>
       </main>
       
+      {variations && (
+        <VariationSelectionModal 
+          variations={variations}
+          onSelect={handleSelectVariation}
+          onClose={() => setVariations(null)}
+        />
+      )}
+
       {isSettingsOpen && (
         <SettingsModal 
           initialKeys={apiKeys} 
