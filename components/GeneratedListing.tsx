@@ -14,7 +14,7 @@ interface ApiKeys {
   };
 }
 
-interface ListingItemProps {
+interface GeneratedListingProps {
   listing: Listing;
   apiKeys: ApiKeys;
   isEbayConfigured: boolean;
@@ -43,7 +43,7 @@ const TabButton: React.FC<{
   </button>
 );
 
-export const ListingItem: React.FC<ListingItemProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured, onDelete }) => {
+export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('general');
 

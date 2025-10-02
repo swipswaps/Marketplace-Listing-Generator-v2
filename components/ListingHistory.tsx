@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Listing } from '../types';
-import { ListingItem } from './GeneratedListing';
+import { GeneratedListing } from './GeneratedListing';
 import { SearchIcon, FilterIcon, DownloadIcon, DeleteIcon } from './icons';
 import { exportAsPdf, exportAsCsv, exportAsSql } from '../utils/exportUtils';
 
@@ -33,7 +33,8 @@ interface ListingHistoryProps {
 const ExportDropdown: React.FC<{ listings: Listing[] }> = ({ listings }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    const handleExport = (format: 'pdf' | 'csv' | 'xls' | 'sql') => {
+    const handleExport = (e: React.MouseEvent, format: 'pdf' | 'csv' | 'xls' | 'sql') => {
+        e.preventDefault();
         if (listings.length === 0) {
             alert("There are no listings to export.");
             return;
@@ -70,10 +71,10 @@ const ExportDropdown: React.FC<{ listings: Listing[] }> = ({ listings }) => {
                     aria-labelledby="menu-button"
                 >
                     <div className="py-1" role="none">
-                        <a href="#" onClick={() => handleExport('pdf')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as PDF</a>
-                        <a href="#" onClick={() => handleExport('csv')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as CSV</a>
-                        <a href="#" onClick={() => handleExport('xls')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as XLS</a>
-                        <a href="#" onClick={() => handleExport('sql')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as SQL</a>
+                        <a href="#" onClick={(e) => handleExport(e, 'pdf')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as PDF</a>
+                        <a href="#" onClick={(e) => handleExport(e, 'csv')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as CSV</a>
+                        <a href="#" onClick={(e) => handleExport(e, 'xls')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as XLS</a>
+                        <a href="#" onClick={(e) => handleExport(e, 'sql')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as SQL</a>
                     </div>
                 </div>
             )}
@@ -139,7 +140,7 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
             <div className="flex-grow overflow-y-auto space-y-3 pr-2 -mr-2">
                  {listings.length > 0 ? (
                     listings.map(listing => (
-                        <ListingItem
+                        <GeneratedListing
                             key={listing.id}
                             listing={listing}
                             apiKeys={apiKeys}
