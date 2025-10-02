@@ -21,8 +21,15 @@ This is a sophisticated web application designed to help e-commerce sellers, mar
 
 1.  **Configure API Keys**:
     -   Click the **Settings** (gear) icon in the top-right corner.
-    -   Enter your **Google Gemini API Key**. This is required for the app to function.
-    -   Optionally, add API keys for eBay and X (Twitter) to enable platform-specific content generation.
+    -   **Google Gemini (Required)**: 
+        -   Paste your Google Gemini API Key.
+        -   You can get a key from the [Google AI Studio](https://aistudio.google.com/app/apikey).
+    -   **eBay (Optional)**:
+        -   Paste your eBay OAuth User Access Token.
+        -   Follow eBay's documentation to generate a token [here](https://developer.ebay.com/api-docs/static/oauth-tokens.html).
+    -   **X / Twitter (Optional)**:
+        -   Paste your four keys: API Key, API Secret, Access Token, and Access Secret.
+        -   You can get these from your app in the [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard).
     -   Click "Save & Close". Your keys are saved securely in your browser.
 
 2.  **Add a New Product**:

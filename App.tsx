@@ -394,7 +394,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
           {/* Gemini Settings */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
-            <p className="text-sm text-slate-500">Required for the application to generate listings.</p>
+            <p className="text-sm text-slate-500">
+              Required for the application to generate listings. Get your key from Google AI Studio. 
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Get API Key</a>
+            </p>
             <div>
                 <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
                  <div className="flex items-center space-x-2 mt-1">
@@ -409,7 +412,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
           {/* eBay Settings */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-slate-900">eBay</h3>
-            <p className="text-sm text-slate-500">Optional. Required to enable the "List on eBay" feature.</p>
+             <p className="text-sm text-slate-500">
+              Optional. Required to enable the "List on eBay" feature. Follow the instructions to generate a User Access Token.
+              <a href="https://developer.ebay.com/api-docs/static/oauth-tokens.html" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Learn More</a>
+            </p>
             <div>
                 <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
                  <div className="flex items-center space-x-2 mt-1">
@@ -424,7 +430,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onS
           {/* Twitter Settings */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-slate-900">X (Twitter)</h3>
-            <p className="text-sm text-slate-500">Optional. Required to enable the "Post to X" feature.</p>
+            <p className="text-sm text-slate-500">
+              Optional. Required to enable the "Post to X" feature. Create a project and app in the developer portal to get your four keys.
+              <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline ml-1">Go to Dashboard</a>
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
                     <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
