@@ -26,6 +26,7 @@ interface ListingHistoryProps {
   setFilterCategory: (category: string) => void;
   availableCategories: string[];
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
   onClear: () => void;
   isEbayConfigured: boolean;
   isTwitterConfigured: boolean;
@@ -85,7 +86,7 @@ const ExportDropdown: React.FC<{ listings: Listing[] }> = ({ listings }) => {
 
 
 export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
-    const { listings, apiKeys, searchTerm, setSearchTerm, sortOrder, setSortOrder, filterCategory, setFilterCategory, availableCategories, onDelete, onClear, isEbayConfigured, isTwitterConfigured } = props;
+    const { listings, apiKeys, searchTerm, setSearchTerm, sortOrder, setSortOrder, filterCategory, setFilterCategory, availableCategories, onDelete, onEdit, onClear, isEbayConfigured, isTwitterConfigured } = props;
 
     return (
         <div className="flex flex-col h-full">
@@ -166,6 +167,7 @@ export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
                             isEbayConfigured={isEbayConfigured}
                             isTwitterConfigured={isTwitterConfigured}
                             onDelete={onDelete}
+                            onEdit={onEdit}
                         />
                     ))
                 ) : (

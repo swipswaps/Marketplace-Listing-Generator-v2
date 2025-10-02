@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Listing } from '../types';
 import { listOnEbay } from '../services/ebayService';
 import { postToX } from '../services/twitterService';
-import { DeleteIcon, InfoIcon, LinkIcon, MaximizeIcon } from './icons';
+import { DeleteIcon, EditIcon, InfoIcon, LinkIcon, MaximizeIcon } from './icons';
 import { ImageZoomModal } from './ImageZoomModal';
 
 interface ApiKeys {
@@ -22,6 +22,7 @@ interface GeneratedListingProps {
   isEbayConfigured: boolean;
   isTwitterConfigured: boolean;
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
 type Tab = 'general' | 'ebay' | 'twitter';
@@ -45,7 +46,7 @@ const TabButton: React.FC<{
   </button>
 );
 
-export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured, onDelete }) => {
+export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, apiKeys, isEbayConfigured, isTwitterConfigured, onDelete, onEdit }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
@@ -88,18 +89,30 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
                         <span className="hidden sm:inline">{formattedDate}</span>
                     </div>
                 </div>
-                <button 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm('Are you sure you want to delete this listing?')) {
-                            onDelete(listing.id);
-                        }
-                    }}
-                    className="ml-4 p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-50"
-                    aria-label="Delete listing"
-                >
-                    <DeleteIcon className="h-4 w-4" />
-                </button>
+                <div className="flex items-center ml-4 space-x-1">
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(listing.id);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-full hover:bg-indigo-50"
+                        aria-label="Edit listing"
+                    >
+                        <EditIcon className="h-4 w-4" />
+                    </button>
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Are you sure you want to delete this listing?')) {
+                                onDelete(listing.id);
+                            }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-50"
+                        aria-label="Delete listing"
+                    >
+                        <DeleteIcon className="h-4 w-4" />
+                    </button>
+                </div>
             </div>
         </div>
 

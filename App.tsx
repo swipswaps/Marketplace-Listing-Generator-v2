@@ -7,6 +7,7 @@ import { verifyEbayToken } from './services/ebayService';
 import { verifyTwitterCredentials } from './services/twitterService';
 import type { Listing } from './types';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
+import { EditListingModal } from './components/EditListingModal';
 import { fileToBase64 } from './utils/fileUtils';
 
 interface ApiKeys {
@@ -58,8 +59,9 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   
-  // Settings State
+  // Settings & Modals State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadState('apiKeys', defaultApiKeys));
 
   // History Management State
@@ -168,6 +170,18 @@ const App: React.FC = () => {
 
   const handleDeleteListing = (id: string) => {
     setListings(prev => prev.filter(l => l.id !== id));
+  };
+
+  const handleUpdateListing = (updatedListing: Listing) => {
+    setListings(prev => prev.map(l => l.id === updatedListing.id ? updatedListing : l));
+    setEditingListing(null);
+  };
+
+  const handleOpenEditModal = (id: string) => {
+    const listingToEdit = listings.find(l => l.id === id);
+    if (listingToEdit) {
+      setEditingListing(listingToEdit);
+    }
   };
   
   const handleClearHistory = () => {
@@ -301,6 +315,7 @@ const App: React.FC = () => {
               setFilterCategory={setFilterCategory}
               availableCategories={availableCategories}
               onDelete={handleDeleteListing}
+              onEdit={handleOpenEditModal}
               onClear={handleClearHistory}
               isEbayConfigured={isEbayConfigured}
               isTwitterConfigured={isTwitterConfigured}
@@ -325,6 +340,14 @@ const App: React.FC = () => {
             setApiKeys(newKeys);
             setIsSettingsOpen(false);
           }}
+        />
+      )}
+
+      {editingListing && (
+        <EditListingModal
+          listing={editingListing}
+          onSave={handleUpdateListing}
+          onClose={() => setEditingListing(null)}
         />
       )}
     </div>
