@@ -26,7 +26,7 @@ const App: React.FC = () => {
   
   // App State
   const [listings, setListings] = useState<Listing[]>([]);
-  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt'>[] | null>(null);
+  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[] | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -134,11 +134,12 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt'>) => {
+  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>, selectedPrice: number) => {
     const newListing: Listing = {
       ...variation,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
+      selectedPrice: selectedPrice,
     };
     setListings(prev => [newListing, ...prev]);
   };
@@ -172,9 +173,9 @@ const App: React.FC = () => {
           case 'date-asc':
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           case 'price-desc':
-            return b.price - a.price;
+            return b.selectedPrice - a.selectedPrice;
           case 'price-asc':
-            return a.price - b.price;
+            return a.selectedPrice - b.selectedPrice;
           case 'date-desc':
           default:
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();

@@ -26,7 +26,8 @@ function escapeCsvCell(cell: any): string {
 
 function convertToCsv(data: Listing[]): string {
     const headers = [
-        'ID', 'Created At', 'Title', 'Description', 'Price', 'Category', 
+        'ID', 'Created At', 'Title', 'Description', 'Selected Price', 'Category', 
+        'Price Suggestion (Quick Sale)', 'Price Suggestion (Market Value)', 'Price Suggestion (Premium)',
         'eBay Title', 'eBay HTML Description', 'Twitter Tweet'
     ];
     
@@ -35,8 +36,11 @@ function convertToCsv(data: Listing[]): string {
         listing.createdAt,
         listing.title,
         listing.description,
-        listing.price,
+        listing.selectedPrice,
         listing.category,
+        listing.priceSuggestion.quickSale,
+        listing.priceSuggestion.marketValue,
+        listing.priceSuggestion.premium,
         listing.ebay?.title,
         listing.ebay?.descriptionHtml,
         listing.twitter?.tweet,
@@ -59,7 +63,7 @@ export const exportAsPdf = (data: Listing[]) => {
     const tableData = data.map(listing => [
         listing.title,
         listing.category,
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.price),
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(listing.selectedPrice),
         new Intl.DateTimeFormat('en-US').format(new Date(listing.createdAt)),
     ]);
 
@@ -98,8 +102,11 @@ CREATE TABLE listings (
     createdAt TIMESTAMP,
     title TEXT,
     description TEXT,
-    price DECIMAL(10, 2),
+    selectedPrice DECIMAL(10, 2),
     category VARCHAR(255),
+    priceSuggestionQuickSale DECIMAL(10, 2),
+    priceSuggestionMarketValue DECIMAL(10, 2),
+    priceSuggestionPremium DECIMAL(10, 2),
     ebayTitle TEXT,
     ebayDescriptionHtml TEXT,
     twitterTweet TEXT
@@ -114,14 +121,17 @@ CREATE TABLE listings (
             escapeSqlValue(listing.createdAt),
             escapeSqlValue(listing.title),
             escapeSqlValue(listing.description),
-            escapeSqlValue(listing.price),
+            escapeSqlValue(listing.selectedPrice),
             escapeSqlValue(listing.category),
+            escapeSqlValue(listing.priceSuggestion.quickSale),
+            escapeSqlValue(listing.priceSuggestion.marketValue),
+            escapeSqlValue(listing.priceSuggestion.premium),
             escapeSqlValue(listing.ebay?.title),
             escapeSqlValue(listing.ebay?.descriptionHtml),
             escapeSqlValue(listing.twitter?.tweet),
         ].join(', ');
         
-        sqlString += `INSERT INTO listings (id, createdAt, title, description, price, category, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
+        sqlString += `INSERT INTO listings (id, createdAt, title, description, selectedPrice, category, priceSuggestionQuickSale, priceSuggestionMarketValue, priceSuggestionPremium, ebayTitle, ebayDescriptionHtml, twitterTweet) VALUES (${values});\n`;
     });
     
     const blob = new Blob([sqlString], { type: 'application/sql;charset=utf-8;' });

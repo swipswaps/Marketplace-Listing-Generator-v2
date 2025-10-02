@@ -50,7 +50,7 @@ export const GeneratedListing: React.FC<GeneratedListingProps> = ({ listing, api
   const formattedPrice = useMemo(() => new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format(listing.price), [listing.price]);
+  }).format(listing.selectedPrice), [listing.selectedPrice]);
 
   const formattedDate = useMemo(() => new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',

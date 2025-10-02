@@ -3,16 +3,45 @@ import type { Listing } from '../types';
 import { CloseIcon, CheckIcon, SparklesIcon } from './icons';
 
 interface VariationSelectionModalProps {
-  variations: Omit<Listing, 'id' | 'createdAt'>[];
-  onSelect: (listing: Omit<Listing, 'id' | 'createdAt'>) => void;
+  variations: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>[];
+  onSelect: (listing: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>, selectedPrice: number) => void;
   onClose: () => void;
 }
 
+const PriceButton: React.FC<{
+    label: string;
+    price: number;
+    isSelected: boolean;
+    onClick: () => void;
+}> = ({ label, price, isSelected, onClick }) => {
+    const formattedPrice = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
+    return (
+        <button
+            onClick={onClick}
+            className={`w-full text-left p-3 rounded-lg border-2 transition-all ${isSelected ? 'bg-indigo-100 border-indigo-500 ring-2 ring-indigo-300' : 'bg-white border-slate-300 hover:border-indigo-400'}`}
+        >
+            <span className={`block text-sm font-semibold ${isSelected ? 'text-indigo-700' : 'text-slate-600'}`}>{label}</span>
+            <span className={`block text-lg font-bold ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{formattedPrice}</span>
+        </button>
+    );
+};
+
 export const VariationSelectionModal: React.FC<VariationSelectionModalProps> = ({ variations, onSelect, onClose }) => {
     const [addedIndices, setAddedIndices] = useState<number[]>([]);
+    const [selectedPrices, setSelectedPrices] = useState<{ [index: number]: number | null }>({});
 
-    const handleSelect = (variation: Omit<Listing, 'id' | 'createdAt'>, index: number) => {
-        onSelect(variation);
+    const handlePriceSelect = (variationIndex: number, price: number) => {
+        setSelectedPrices(prev => ({
+            ...prev,
+            [variationIndex]: price,
+        }));
+    };
+
+    const handleAdd = (variation: Omit<Listing, 'id' | 'createdAt' | 'selectedPrice'>, index: number) => {
+        const selectedPrice = selectedPrices[index];
+        if (selectedPrice === null || typeof selectedPrice === 'undefined') return;
+
+        onSelect(variation, selectedPrice);
         setAddedIndices(prev => [...prev, index]);
     };
 
@@ -30,32 +59,35 @@ export const VariationSelectionModal: React.FC<VariationSelectionModalProps> = (
                 </header>
 
                 <p className="px-6 py-4 text-slate-600 text-center bg-white border-b border-slate-200 flex-shrink-0">
-                    We've generated a few variations. Pick your favorite(s) to add to your history.
+                    We've generated a few variations. Pick your favorite price for each, then add them to your history.
                 </p>
                 
                 <main className="flex-grow p-6 lg:p-8 overflow-y-auto">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {variations.map((variation, index) => {
                             const isAdded = addedIndices.includes(index);
+                            const currentSelectedPrice = selectedPrices[index];
                             return (
                                 <div key={index} className="bg-white rounded-xl shadow-lg flex flex-col transition-all hover:shadow-2xl hover:scale-[1.02]">
                                     <div className="p-6 flex-grow flex flex-col">
-                                        <h3 className="text-lg font-bold text-slate-900">{variation.title}</h3>
-                                        <div className="flex items-baseline space-x-2 mt-2">
-                                            <span className="text-2xl font-bold text-indigo-600">
-                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(variation.price)}
-                                            </span>
-                                            <span className="text-sm font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{variation.category}</span>
+                                        <h3 className="text-lg font-bold text-slate-900 line-clamp-2">{variation.title}</h3>
+                                        <span className="text-sm font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full self-start mt-2">{variation.category}</span>
+                                        
+                                        <div className="mt-4 space-y-2">
+                                            <PriceButton label="Quick Sale" price={variation.priceSuggestion.quickSale} isSelected={currentSelectedPrice === variation.priceSuggestion.quickSale} onClick={() => handlePriceSelect(index, variation.priceSuggestion.quickSale)} />
+                                            <PriceButton label="Market Value" price={variation.priceSuggestion.marketValue} isSelected={currentSelectedPrice === variation.priceSuggestion.marketValue} onClick={() => handlePriceSelect(index, variation.priceSuggestion.marketValue)} />
+                                            <PriceButton label="Premium" price={variation.priceSuggestion.premium} isSelected={currentSelectedPrice === variation.priceSuggestion.premium} onClick={() => handlePriceSelect(index, variation.priceSuggestion.premium)} />
                                         </div>
-                                        <p className="mt-4 text-sm text-slate-600 line-clamp-5 flex-grow">
+
+                                        <p className="mt-4 text-sm text-slate-600 line-clamp-4 flex-grow">
                                             {variation.description.split('\n').filter(p => p.trim()).map((p, i) => <React.Fragment key={i}>{p}<br/></React.Fragment>)}
                                         </p>
                                     </div>
                                     <div className="p-4 bg-slate-50 rounded-b-xl mt-auto">
                                         <button 
-                                            onClick={() => handleSelect(variation, index)}
-                                            disabled={isAdded}
-                                            className={`w-full inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md shadow-sm text-white transition-colors ${isAdded ? 'bg-green-500 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'}`}
+                                            onClick={() => handleAdd(variation, index)}
+                                            disabled={isAdded || currentSelectedPrice === null || typeof currentSelectedPrice === 'undefined'}
+                                            className={`w-full inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-base font-medium rounded-md shadow-sm text-white transition-colors ${isAdded ? 'bg-green-500 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'} disabled:bg-slate-300 disabled:cursor-not-allowed`}
                                         >
                                             {isAdded ? (
                                                 <>
