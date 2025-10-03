@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import type { Listing, ListingVariation, ApiKeys } from './types';
-import { generateListings } from './services/geminiService';
+import { generateListings, verifyGeminiKey } from './services/geminiService';
 import { dbService } from './services/dbService';
 import { postToX, verifyTwitterCredentials } from './services/twitterService';
 import { postToEbay, verifyEbayCredentials } from './services/ebayService';
@@ -35,7 +34,6 @@ const App: React.FC = () => {
 
     // Modal State
     const [variations, setVariations] = useState<ListingVariation[]>([]);
-    // FIX: Add state to hold image keys for the variations currently in the modal.
     const [imageKeysForVariations, setImageKeysForVariations] = useState<string[]>([]);
     const [showVariationModal, setShowVariationModal] = useState(false);
     const [editingListing, setEditingListing] = useState<Listing | null>(null);
@@ -47,7 +45,9 @@ const App: React.FC = () => {
     const [apiKeys, setApiKeys] = useState<ApiKeys>(() => {
         try {
             const savedApiKeys = localStorage.getItem('apiKeys');
-            return savedApiKeys ? JSON.parse(savedApiKeys) : initialApiKeys;
+            const parsedKeys = savedApiKeys ? JSON.parse(savedApiKeys) : {};
+            // Merge with defaults to ensure all keys are present and prevent errors
+            return { ...initialApiKeys, ...parsedKeys };
         } catch {
             return initialApiKeys;
         }
@@ -113,7 +113,6 @@ const App: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            // FIX: Store the generated image keys in state to be used when selecting a variation.
             const imageKeys = await dbService.saveImages(images);
             setImageKeysForVariations(imageKeys);
             const result = await generateListings(images, userQuery, apiKeys.geminiApiKey);
@@ -128,7 +127,6 @@ const App: React.FC = () => {
     };
     
     const handleSelectVariation = (variation: ListingVariation, selectedPrice: number) => {
-        // FIX: Add the `images` property from state to create a valid `Listing` object.
         const newListing: Listing = {
             ...variation,
             id: crypto.randomUUID(),
@@ -242,7 +240,7 @@ const App: React.FC = () => {
                     >
                          {isLoading ? (
                             <>
-                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
@@ -283,7 +281,6 @@ const App: React.FC = () => {
                 <VariationSelectionModal 
                     variations={variations}
                     onSelect={handleSelectVariation}
-                    // FIX: Clear the temporary image keys when the modal is closed.
                     onClose={() => {
                         setShowVariationModal(false);
                         setImageKeysForVariations([]);
@@ -320,6 +317,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose }) => {
     const [localKeys, setLocalKeys] = useState<ApiKeys>(apiKeys);
     const [verificationStatus, setVerificationStatus] = useState<{ [key: string]: 'idle' | 'verifying' | 'success' | 'error' }>({
+        gemini: 'idle',
         ebay: 'idle',
         twitter: 'idle'
     });
@@ -333,6 +331,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose 
         onSave(localKeys);
         onClose();
         toast.success("Settings saved!");
+    };
+
+    const handleVerifyGemini = async () => {
+        setVerificationStatus(prev => ({ ...prev, gemini: 'verifying' }));
+        const result = await verifyGeminiKey(localKeys.geminiApiKey);
+        if (result.success) {
+            setVerificationStatus(prev => ({ ...prev, gemini: 'success' }));
+            toast.success("Gemini API key verified successfully!");
+        } else {
+            setVerificationStatus(prev => ({ ...prev, gemini: 'error' }));
+            toast.error(`Gemini verification failed: ${result.error}`);
+        }
     };
 
     const handleVerifyEbay = async () => {
@@ -379,6 +389,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose 
                         <div>
                             <label htmlFor="geminiApiKey" className="block text-sm font-medium text-slate-700">Gemini API Key</label>
                             <input type="password" name="geminiApiKey" id="geminiApiKey" value={localKeys.geminiApiKey} onChange={handleChange} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm"/>
+                        </div>
+                        <div className="flex justify-end">
+                            <button type="button" onClick={handleVerifyGemini} disabled={!localKeys.geminiApiKey || verificationStatus.gemini === 'verifying'} className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50">
+                                {verificationStatus.gemini === 'verifying' && <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                                {verificationStatus.gemini === 'success' && <CheckIcon className="h-4 w-4 mr-2 text-green-500"/>}
+                                {verificationStatus.gemini === 'error' && <ErrorIcon className="h-4 w-4 mr-2 text-red-500"/>}
+                                Verify
+                            </button>
                         </div>
                     </fieldset>
 

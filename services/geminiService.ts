@@ -126,3 +126,29 @@ export const generateListings = async (
     throw new Error("An error occurred while generating listings. Please check the console for details.");
   }
 };
+
+/**
+ * Verifies a Gemini API key by making a simple, lightweight API call.
+ */
+export const verifyGeminiKey = async (apiKey: string): Promise<{ success: boolean; error?: string }> => {
+    if (!apiKey) {
+        return { success: false, error: "API Key is missing." };
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        // A simple, low-cost model call to verify authentication.
+        // We just need to see if it throws an auth error.
+        await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: "hello",
+        });
+        return { success: true };
+    } catch (error: any) {
+        console.error("Gemini API key verification failed:", error);
+        if (error.message && error.message.includes('API key not valid')) {
+            return { success: false, error: "The provided API key is not valid. Please check it and try again." };
+        }
+        return { success: false, error: "Verification failed. Check the browser console for more details." };
+    }
+};
