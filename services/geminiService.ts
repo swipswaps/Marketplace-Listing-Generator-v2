@@ -48,11 +48,12 @@ The JSON object should be an array of 3 listing variations, matching this struct
 
 export const generateListings = async (
   images: File[],
-  userQuery: string,
-  apiKey: string
+  userQuery: string
 ): Promise<ListingVariation[]> => {
+  // Fix: API key is now sourced exclusively from environment variables as per guidelines.
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("Gemini API key is not configured.");
+    throw new Error("Gemini API key is not configured in environment variables.");
   }
   
   if (images.length === 0) {
@@ -127,28 +128,4 @@ export const generateListings = async (
   }
 };
 
-/**
- * Verifies a Gemini API key by making a simple, lightweight API call.
- */
-export const verifyGeminiKey = async (apiKey: string): Promise<{ success: boolean; error?: string }> => {
-    if (!apiKey) {
-        return { success: false, error: "API Key is missing." };
-    }
-
-    try {
-        const ai = new GoogleGenAI({ apiKey });
-        // A simple, low-cost model call to verify authentication.
-        // We just need to see if it throws an auth error.
-        await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: "hello",
-        });
-        return { success: true };
-    } catch (error: any) {
-        console.error("Gemini API key verification failed:", error);
-        if (error.message && error.message.includes('API key not valid')) {
-            return { success: false, error: "The provided API key is not valid. Please check it and try again." };
-        }
-        return { success: false, error: "Verification failed. Check the browser console for more details." };
-    }
-};
+// Fix: Removed `verifyGeminiKey` function as it's no longer needed after refactoring the API key handling.
