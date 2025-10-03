@@ -54,12 +54,11 @@ The JSON object should be an array of 3 listing variations, matching this struct
 
 export const generateListings = async (
   images: File[],
-  userQuery: string
+  userQuery: string,
+  apiKey: string
 ): Promise<ListingVariation[]> => {
-  // Fix: API key is now sourced exclusively from environment variables as per guidelines.
-  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("Gemini API key is not configured in environment variables.");
+    throw new Error("Gemini API key is not configured. Please set it in the settings.");
   }
   
   if (images.length === 0) {
@@ -125,11 +124,42 @@ export const generateListings = async (
         return v;
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating listings with Gemini API:", error);
     if (error instanceof SyntaxError) {
       throw new Error("Failed to parse the response from the AI. The response may not be valid JSON.");
     }
+    if (error.message && error.message.includes('API key not valid')) {
+        throw new Error("The provided Gemini API key is not valid. Please check it in the settings.");
+    }
     throw new Error("An error occurred while generating listings. Please check the console for details.");
   }
+};
+
+
+/**
+ * Verifies the Gemini API key by making a lightweight, non-generating call.
+ */
+export const verifyGeminiKey = async (apiKey: string): Promise<{ success: boolean; error?: string }> => {
+    if (!apiKey) {
+        return { success: false, error: "API key is missing." };
+    }
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        // Making a very simple, low-token call to verify authentication
+        await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: 'test',
+            config: {
+                maxOutputTokens: 1,
+            }
+        });
+        return { success: true };
+    } catch (error: any) {
+        console.error("Gemini key verification failed:", error);
+        if (error.message && error.message.includes('API key not valid')) {
+            return { success: false, error: "The provided API key is not valid." };
+        }
+        return { success: false, error: "An unknown error occurred during verification." };
+    }
 };

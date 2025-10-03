@@ -40,7 +40,7 @@ export interface Listing {
 export type ListingVariation = Omit<Listing, 'id' | 'createdAt' | 'images' | 'selectedPrice'>;
 
 export interface ApiKeys {
-  // Fix: Removed geminiApiKey to enforce usage of environment variables.
+  geminiApiKey: string;
   ebayAppId: string;
   ebayUserToken: string;
   ebayEnvironment: 'production' | 'sandbox';

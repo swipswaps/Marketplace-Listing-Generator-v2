@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Listing, ListingVariation, ApiKeys } from './types';
-// Fix: Removed verifyGeminiKey import as it's no longer used.
-import { generateListings } from './services/geminiService';
+import { generateListings, verifyGeminiKey } from './services/geminiService';
 import { dbService } from './services/dbService';
 import { postToX, verifyTwitterCredentials } from './services/twitterService';
 import { postToEbay, verifyEbayCredentials } from './services/ebayService';
@@ -14,8 +13,8 @@ import { ListingHistory } from './components/ListingHistory';
 import { EditListingModal } from './components/EditListingModal';
 import { EbayRefinementModal } from './components/EbayRefinementModal';
 
-// Fix: Removed geminiApiKey from initial state to enforce usage of environment variables.
 const initialApiKeys: ApiKeys = {
+    geminiApiKey: '',
     ebayAppId: '',
     ebayUserToken: '',
     ebayEnvironment: 'production',
@@ -97,7 +96,11 @@ const App: React.FC = () => {
     };
     
     const handleGenerate = async () => {
-        // Fix: Removed client-side check for Gemini API key. The service now handles this and will throw an error if the environment variable is not set.
+        if (!apiKeys.geminiApiKey) {
+            setError("Please set your Gemini API key in the settings.");
+            toast.error("Please set your Gemini API key in the settings.");
+            return;
+        }
         if (images.length === 0) {
             setError("Please upload at least one image.");
             return;
@@ -112,8 +115,7 @@ const App: React.FC = () => {
         try {
             const imageKeys = await dbService.saveImages(images);
             setImageKeysForVariations(imageKeys);
-            // Fix: API key is no longer passed from the client; the service uses environment variables.
-            const result = await generateListings(images, userQuery);
+            const result = await generateListings(images, userQuery, apiKeys.geminiApiKey);
             setVariations(result);
             setShowVariationModal(true);
         } catch (e: any) {
@@ -238,7 +240,7 @@ const App: React.FC = () => {
                     >
                          {isLoading ? (
                             <>
-                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
@@ -314,8 +316,8 @@ interface SettingsModalProps {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose }) => {
     const [localKeys, setLocalKeys] = useState<ApiKeys>(apiKeys);
-    // Fix: Removed Gemini from verification status as it's no longer configured in the UI.
     const [verificationStatus, setVerificationStatus] = useState<{ [key: string]: 'idle' | 'verifying' | 'success' | 'error' }>({
+        gemini: 'idle',
         ebay: 'idle',
         twitter: 'idle'
     });
@@ -331,7 +333,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose 
         toast.success("Settings saved!");
     };
 
-    // Fix: Removed `handleVerifyGemini` function as Gemini API key is no longer managed via UI.
+    const handleVerifyGemini = async () => {
+        setVerificationStatus(prev => ({ ...prev, gemini: 'verifying' }));
+        const result = await verifyGeminiKey(localKeys.geminiApiKey);
+        if (result.success) {
+            setVerificationStatus(prev => ({ ...prev, gemini: 'success' }));
+            toast.success("Gemini API key verified successfully!");
+        } else {
+            setVerificationStatus(prev => ({ ...prev, gemini: 'error' }));
+            toast.error(`Gemini verification failed: ${result.error}`);
+        }
+    };
 
     const handleVerifyEbay = async () => {
         setVerificationStatus(prev => ({ ...prev, ebay: 'verifying' }));
@@ -367,7 +379,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose 
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100"><CloseIcon className="h-6 w-6 text-slate-500"/></button>
                 </header>
                 <main className="p-6 overflow-y-auto space-y-6">
-                    {/* Fix: Removed Gemini API Key section from settings UI. */}
+                    {/* Gemini Settings */}
+                     <fieldset className="space-y-4">
+                        <legend className="text-lg font-semibold text-slate-800">Google Gemini API (Required)</legend>
+                        <div className="p-3 bg-slate-100 rounded-md text-sm text-slate-600 flex items-start space-x-2">
+                            <InfoIcon className="h-5 w-5 text-slate-400 mt-0.5 flex-shrink-0"/>
+                            <span>This is required for the core functionality. You can get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:underline">Google AI Studio</a>.</span>
+                        </div>
+                        <div>
+                            <label htmlFor="geminiApiKey" className="block text-sm font-medium text-slate-700">API Key</label>
+                            <input type="password" name="geminiApiKey" id="geminiApiKey" value={localKeys.geminiApiKey} onChange={handleChange} className="mt-1 block w-full rounded-md border-slate-300 shadow-sm"/>
+                        </div>
+                        <div className="flex justify-end">
+                            <button type="button" onClick={handleVerifyGemini} disabled={!localKeys.geminiApiKey || verificationStatus.gemini === 'verifying'} className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50">
+                                {verificationStatus.gemini === 'verifying' && <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                                {verificationStatus.gemini === 'success' && <CheckIcon className="h-4 w-4 mr-2 text-green-500"/>}
+                                {verificationStatus.gemini === 'error' && <ErrorIcon className="h-4 w-4 mr-2 text-red-500"/>}
+                                Verify
+                            </button>
+                        </div>
+                    </fieldset>
+
+                     <hr className="border-slate-200" />
                     
                     {/* eBay Settings */}
                     <fieldset className="space-y-4">
