@@ -1,53 +1,72 @@
-import { Listing } from "../types";
-import { toast } from 'react-hot-toast';
+import { Listing, ApiKeys } from "../types";
 
-// A mock interface for what eBay credentials might look like.
-// In a real app, this would be an OAuth token.
-export interface EbayCredentials {
-    appId: string;
-    certId: string;
-    devId: string;
-    authToken: string;
-}
+const API_ENDPOINTS = {
+    production: 'https://api.ebay.com',
+    sandbox: 'https://api.sandbox.ebay.com'
+};
 
-/**
- * Copies the listing's HTML description to the clipboard and opens the eBay selling page.
- * This is a client-side friendly approach as direct API posting is complex and insecure.
- * @param listing The generated listing data.
- */
-export const postToEbay = async (listing: Listing): Promise<void> => {
-  if (!listing.ebay?.descriptionHtml || !listing.ebay?.title) {
-    console.error("eBay title or HTML description is missing.");
-    toast.error("eBay content is missing. Cannot proceed.");
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(listing.ebay.descriptionHtml);
-    toast.success("eBay HTML description copied to clipboard!");
-  } catch (err) {
-    console.error("Failed to copy HTML to clipboard:", err);
-    toast.error("Could not copy HTML. Please copy it manually from the edit screen.");
-  }
-
-  // Deep-link to eBay's selling page. Title can be pre-filled.
-  const encodedTitle = encodeURIComponent(listing.ebay.title);
-  const ebaySellUrl = `https://www.ebay.com/sl/prelist/suggest?title=${encodedTitle}`;
-  
-  window.open(ebaySellUrl, '_blank', 'noopener,noreferrer');
+const SITE_URLS = {
+    production: 'https://www.ebay.com',
+    sandbox: 'https://www.sandbox.ebay.com'
 };
 
 /**
- * Verifies that all required eBay API credential fields are non-empty.
- * NOTE: This is a superficial check. A real-world application would require a server-side
- * component to perform a live API call to validate OAuth tokens.
- * @param credentials An object containing mock eBay credentials.
- * @returns A promise that resolves to true if all keys are present, false otherwise.
+ * Opens the eBay "Sell Your Item" page in a new tab with details pre-filled.
+ * This provides a seamless user experience while avoiding the immense complexity
+ * and security risks of making server-side AddItem calls from a client-side app.
+ * The URL is adjusted based on the selected environment.
  */
-export const verifyEbayCredentials = async (credentials: EbayCredentials): Promise<boolean> => {
-    // Simulate a brief network delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 500));
+export const postToEbay = (listing: Listing, apiKeys: ApiKeys): void => {
+    const baseUrl = SITE_URLS[apiKeys.ebayEnvironment];
     
-    const { appId, certId, devId, authToken } = credentials;
-    return !!(appId?.trim() && certId?.trim() && devId?.trim() && authToken?.trim());
+    // The category ID would ideally be fetched from the Taxonomy API and stored on the listing.
+    // We'll use a placeholder for now.
+    const categoryId = '1'; 
+
+    const url = new URL(`${baseUrl}/sl/prelist/suggest`);
+    url.searchParams.set('title', listing.ebay?.title || listing.title);
+    url.searchParams.set('catId', categoryId);
+    // You can also pre-fill description, price, etc., but title and category are most effective.
+
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+};
+
+/**
+ * Verifies eBay credentials by making a simple, live, read-only API call.
+ * This function calls the Taxonomy API's getCategoryTreeId endpoint, which
+ * requires a valid OAuth token, providing definitive verification.
+ * @returns A promise that resolves with a success or error status.
+ */
+export const verifyEbayCredentials = async (
+    keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment'>
+): Promise<{ success: boolean; error?: string }> => {
+    const { ebayUserToken, ebayEnvironment } = keys;
+
+    if (!ebayUserToken) {
+        return { success: false, error: "User Token is missing." };
+    }
+
+    const endpoint = API_ENDPOINTS[ebayEnvironment];
+    const url = `${endpoint}/sell/taxonomy/v1/category_tree`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${ebayUserToken}`,
+                'Accept': 'application/json',
+            },
+        });
+
+        if (response.ok) {
+            return { success: true };
+        } else {
+            const errorData = await response.json();
+            const errorMessage = errorData.errors?.[0]?.message || `HTTP Error: ${response.status}`;
+            return { success: false, error: errorMessage };
+        }
+    } catch (error: any) {
+        console.error("eBay verification fetch error:", error);
+        return { success: false, error: "A network error occurred. Check the browser console for details." };
+    }
 };

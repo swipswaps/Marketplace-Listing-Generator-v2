@@ -1,11 +1,4 @@
-import { Listing } from "../types";
-
-interface TwitterApiKeys {
-    apiKey: string;
-    apiSecret: string;
-    accessToken: string;
-    accessSecret: string;
-}
+import { Listing, ApiKeys } from "../types";
 
 /**
  * Opens the Twitter "Tweet" intent URL in a new window with the tweet text pre-filled.
@@ -13,15 +6,16 @@ interface TwitterApiKeys {
  * third-party application without exposing their API credentials on the client-side.
  * @param listing The generated listing data.
  */
-export const postToX = (listing: Listing, apiKeys: TwitterApiKeys): void => {
+export const postToX = (listing: Listing, apiKeys: ApiKeys): void => {
   if (!listing.twitter?.tweet) {
     console.error("Twitter content is missing.");
     return;
   }
   
-  const { apiKey, apiSecret, accessToken, accessSecret } = apiKeys;
-  if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
+  const { twitterApiKey, twitterApiSecret, twitterAccessToken, twitterAccessSecret } = apiKeys;
+  if (!twitterApiKey || !twitterApiSecret || !twitterAccessToken || !twitterAccessSecret) {
       console.error("Twitter API keys are missing.");
+      alert("Please configure all four Twitter API keys in the settings.");
       return;
   }
 
@@ -40,10 +34,12 @@ export const postToX = (listing: Listing, apiKeys: TwitterApiKeys): void => {
  * @param credentials An object containing the four Twitter API keys.
  * @returns A promise that resolves to true if all keys are present, false otherwise.
  */
-export const verifyTwitterCredentials = async (credentials: TwitterApiKeys): Promise<boolean> => {
+export const verifyTwitterCredentials = async (
+    credentials: Pick<ApiKeys, 'twitterApiKey' | 'twitterApiSecret' | 'twitterAccessToken' | 'twitterAccessSecret'>
+): Promise<boolean> => {
     // Simulate a brief network delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    const { apiKey, apiSecret, accessToken, accessSecret } = credentials;
-    return !!(apiKey.trim() && apiSecret.trim() && accessToken.trim() && accessSecret.trim());
+    const { twitterApiKey, twitterApiSecret, twitterAccessToken, twitterAccessSecret } = credentials;
+    return !!(twitterApiKey.trim() && twitterApiSecret.trim() && twitterAccessToken.trim() && twitterAccessSecret.trim());
 };
