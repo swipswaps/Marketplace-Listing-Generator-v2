@@ -15,6 +15,8 @@ export interface PriceSuggestion {
 export interface EbayData {
   title: string;
   descriptionHtml: string;
+  categoryId?: string;
+  conditionId?: string;
 }
 
 export interface TwitterData {
@@ -46,4 +48,21 @@ export interface ApiKeys {
   twitterApiSecret: string;
   twitterAccessToken: string;
   twitterAccessSecret: string;
+}
+
+// --- Specific types for eBay API responses ---
+
+export interface EbayCategorySuggestion {
+  category: {
+    categoryId: string;
+    categoryName: string;
+  };
+  categoryTreeNodeAncestors: {
+    categoryName: string;
+  }[];
+}
+
+export interface EbayCondition {
+    conditionId: string;
+    conditionName: string;
 }

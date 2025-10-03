@@ -1,4 +1,4 @@
-import { Listing, ApiKeys } from "../types";
+import { Listing, ApiKeys, EbayCategorySuggestion, EbayCondition } from "../types";
 
 const API_ENDPOINTS = {
     production: 'https://api.ebay.com',
@@ -12,33 +12,24 @@ const SITE_URLS = {
 
 /**
  * Opens the eBay "Sell Your Item" page in a new tab with details pre-filled.
- * This provides a seamless user experience while avoiding the immense complexity
- * and security risks of making server-side AddItem calls from a client-side app.
- * The URL is adjusted based on the selected environment.
  */
 export const postToEbay = (listing: Listing, apiKeys: ApiKeys): void => {
     const baseUrl = SITE_URLS[apiKeys.ebayEnvironment];
     
-    // The category ID would ideally be fetched from the Taxonomy API and stored on the listing.
-    // We'll use a placeholder for now.
-    const categoryId = '1'; 
+    const categoryId = listing.ebay?.categoryId || '0'; 
 
     const url = new URL(`${baseUrl}/sl/prelist/suggest`);
     url.searchParams.set('title', listing.ebay?.title || listing.title);
     url.searchParams.set('catId', categoryId);
-    // You can also pre-fill description, price, etc., but title and category are most effective.
 
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
 };
 
 /**
  * Verifies eBay credentials by making a simple, live, read-only API call.
- * This function calls the Taxonomy API's getCategoryTreeId endpoint, which
- * requires a valid OAuth token, providing definitive verification.
- * @returns A promise that resolves with a success or error status.
  */
 export const verifyEbayCredentials = async (
-    keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment'>
+    keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment' | 'ebayAppId'>
 ): Promise<{ success: boolean; error?: string }> => {
     const { ebayUserToken, ebayEnvironment } = keys;
 
@@ -46,27 +37,97 @@ export const verifyEbayCredentials = async (
         return { success: false, error: "User Token is missing." };
     }
 
-    const endpoint = API_ENDPOINTS[ebayEnvironment];
-    const url = `${endpoint}/sell/taxonomy/v1/category_tree`;
-
+    // A simple call to get the default category tree ID is a reliable way to verify the token.
     try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${ebayUserToken}`,
-                'Accept': 'application/json',
-            },
-        });
-
-        if (response.ok) {
+        const categoryTreeId = await getDefaultCategoryTreeId(keys);
+        if (categoryTreeId) {
             return { success: true };
         } else {
-            const errorData = await response.json();
-            const errorMessage = errorData.errors?.[0]?.message || `HTTP Error: ${response.status}`;
-            return { success: false, error: errorMessage };
+             return { success: false, error: "Received an empty response from eBay." };
         }
     } catch (error: any) {
-        console.error("eBay verification fetch error:", error);
-        return { success: false, error: "A network error occurred. Check the browser console for details." };
+        return { success: false, error: error.message };
     }
 };
+
+/**
+ * Fetches the default category tree ID for a marketplace.
+ * This is a helper function used for verification.
+ */
+const getDefaultCategoryTreeId = async (keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment'>) => {
+    const endpoint = API_ENDPOINTS[keys.ebayEnvironment];
+    // EBAY_US marketplace ID is '0'
+    const url = `${endpoint}/sell/taxonomy/v1/category_tree/0`;
+
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${keys.ebayUserToken}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.[0]?.message || `HTTP Error: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.categoryTreeId;
+}
+
+
+/**
+ * Fetches eBay category suggestions based on a query string.
+ * Uses the Taxonomy API's getCategorySuggestions method.
+ */
+export const getCategorySuggestions = async (
+    query: string, 
+    keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment'>
+): Promise<EbayCategorySuggestion[]> => {
+    const categoryTreeId = await getDefaultCategoryTreeId(keys);
+    const endpoint = API_ENDPOINTS[keys.ebayEnvironment];
+    const url = `${endpoint}/sell/taxonomy/v1/category_tree/${categoryTreeId}/get_category_suggestions?q=${encodeURIComponent(query)}`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${keys.ebayUserToken}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.[0]?.message || 'Failed to fetch category suggestions.');
+    }
+    
+    const data = await response.json();
+    return data.categorySuggestions || [];
+};
+
+/**
+ * Fetches the applicable item conditions for a specific category.
+ * Uses the Metadata API's getItemConditions method.
+ */
+export const getCategoryConditions = async (
+    categoryId: string, 
+    keys: Pick<ApiKeys, 'ebayUserToken' | 'ebayEnvironment'>
+): Promise<EbayCondition[]> => {
+    const categoryTreeId = await getDefaultCategoryTreeId(keys);
+    const endpoint = API_ENDPOINTS[keys.ebayEnvironment];
+    const url = `${endpoint}/sell/metadata/v1/marketplace/EBAY_US/get_item_conditions?category_ids=${categoryId}&category_tree_id=${categoryTreeId}`;
+    
+     const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${keys.ebayUserToken}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.[0]?.message || 'Failed to fetch item conditions.');
+    }
+    
+    const data = await response.json();
+    // The response is complex, we need to drill down to find the conditions array
+    return data.itemConditionsForCategory?.[0]?.itemConditions || [];
+}
