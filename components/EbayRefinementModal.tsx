@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Listing, ApiKeys, EbayCategorySuggestion, EbayCondition } from '../types';
 import { getCategorySuggestions, getCategoryConditions } from '../services/ebayService';
-import { CloseIcon, InfoIcon } from './icons';
+import { CloseIcon } from './icons';
 import toast from 'react-hot-toast';
 
 interface EbayRefinementModalProps {
@@ -34,8 +34,9 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
         setSelectedCategoryId(suggestions[0].category.categoryId);
       }
     } catch (e: any) {
-      setError(`Failed to fetch eBay categories: ${e.message}`);
-      toast.error(`Failed to fetch eBay categories: ${e.message}`);
+      const errorMessage = `Failed to fetch eBay categories: ${e.message}`;
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoadingCategories(false);
     }
@@ -50,7 +51,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
       const fetchedConditions = await getCategoryConditions(selectedCategoryId, apiKeys);
       setConditions(fetchedConditions);
       if (fetchedConditions.length > 0) {
-        // Try to find a default like "Used" or "Pre-owned", otherwise pick the first one.
+        // Try to find a default like "Used" or "Pre-owned" (IDs 2000-3000), otherwise pick the first one.
         const defaultCondition = fetchedConditions.find(c => ['2000', '2500', '3000'].includes(c.conditionId)) || fetchedConditions[0];
         setSelectedConditionId(defaultCondition.conditionId);
       }
@@ -76,7 +77,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const refinedListing = {
+    const refinedListing: Listing = {
         ...listing,
         ebay: {
             ...listing.ebay!,
@@ -88,7 +89,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
   };
   
   const formatCategoryPath = (suggestion: EbayCategorySuggestion) => {
-      const path = suggestion.categoryTreeNodeAncestors
+      const path = (suggestion.categoryTreeNodeAncestors || [])
           .map(a => a.categoryName)
           .join(' > ');
       return `${path} > ${suggestion.category.categoryName}`;
@@ -106,10 +107,10 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
             </header>
             
             <main className="p-6 space-y-4">
-              <p className="text-sm text-slate-600">Please confirm the eBay category and condition for your item. This ensures your listing is accurate.</p>
+              <p className="text-sm text-slate-600">Please confirm the official eBay category and condition for your item to ensure your listing is accurate.</p>
               
                <div className="bg-slate-50 p-3 rounded-md">
-                <p className="text-sm font-semibold text-slate-800">{listing.ebay?.title || listing.title}</p>
+                <p className="text-sm font-semibold text-slate-800 truncate" title={listing.ebay?.title || listing.title}>{listing.ebay?.title || listing.title}</p>
               </div>
 
                <div>
@@ -122,7 +123,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
                     className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100"
                 >
                   {isLoadingCategories && <option>Loading categories...</option>}
-                  {!isLoadingCategories && categorySuggestions.length === 0 && <option>No suggestions found.</option>}
+                  {!isLoadingCategories && categorySuggestions.length === 0 && <option>No suggestions found for "{listing.category}".</option>}
                   {categorySuggestions.map(sug => (
                       <option key={sug.category.categoryId} value={sug.category.categoryId}>
                           {formatCategoryPath(sug)}
@@ -143,7 +144,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
                 >
                   {!selectedCategoryId && <option>Select a category first</option>}
                   {isLoadingConditions && <option>Loading conditions...</option>}
-                  {!isLoadingConditions && conditions.length === 0 && selectedCategoryId && <option>No conditions found for category</option>}
+                  {!isLoadingConditions && conditions.length === 0 && selectedCategoryId && <option>No conditions found for this category</option>}
                   {conditions.map(cond => (
                       <option key={cond.conditionId} value={cond.conditionId}>
                           {cond.conditionName}
@@ -159,7 +160,7 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
                 <button 
                     type="submit" 
                     disabled={isPosting || !selectedCategoryId || !selectedConditionId} 
-                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
                 >
                     {isPosting ? 'Redirecting...' : 'Continue to eBay'}
                 </button>
