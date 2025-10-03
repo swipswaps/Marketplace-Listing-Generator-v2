@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import type { Listing } from '../types';
 import { CloseIcon, CheckIcon, SparklesIcon, InfoIcon, LinkIcon } from './icons';
 
+type ListingVariation = Omit<Listing, 'id' | 'createdAt' | 'images'>;
+
 interface VariationSelectionModalProps {
-  variations: Omit<Listing, 'id' | 'createdAt'>[];
-  onSelect: (listing: Omit<Listing, 'id' | 'createdAt'>, selectedPrice: number) => void;
+  variations: ListingVariation[];
+  onSelect: (listing: ListingVariation, selectedPrice: number) => void;
   onClose: () => void;
 }
 
@@ -43,7 +45,7 @@ export const VariationSelectionModal: React.FC<VariationSelectionModalProps> = (
         }));
     };
     
-    const handleAdd = (variation: Omit<Listing, 'id' | 'createdAt'>, index: number) => {
+    const handleAdd = (variation: ListingVariation, index: number) => {
         const selectedPrice = selections[index].price;
         if (selectedPrice === null) return;
 

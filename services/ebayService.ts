@@ -1,17 +1,36 @@
 import { Listing } from "../types";
+import { toast } from 'react-hot-toast';
+
+// A mock interface for what eBay credentials might look like.
+// In a real app, this would be an OAuth token.
+export interface EbayCredentials {
+    appId: string;
+    certId: string;
+    devId: string;
+    authToken: string;
+}
 
 /**
- * Opens the eBay "Sell Your Item" page with the title pre-filled.
- * This provides a secure and robust way to hand off the listing creation
- * to eBay, ensuring all user policies are correctly applied.
+ * Copies the listing's HTML description to the clipboard and opens the eBay selling page.
+ * This is a client-side friendly approach as direct API posting is complex and insecure.
  * @param listing The generated listing data.
  */
-export const listOnEbay = (listing: Listing, authToken: string): void => {
-  if (!listing.ebay?.title || !authToken) {
-    console.error("eBay title or auth token is missing.");
+export const postToEbay = async (listing: Listing): Promise<void> => {
+  if (!listing.ebay?.descriptionHtml || !listing.ebay?.title) {
+    console.error("eBay title or HTML description is missing.");
+    toast.error("eBay content is missing. Cannot proceed.");
     return;
   }
-  
+
+  try {
+    await navigator.clipboard.writeText(listing.ebay.descriptionHtml);
+    toast.success("eBay HTML description copied to clipboard!");
+  } catch (err) {
+    console.error("Failed to copy HTML to clipboard:", err);
+    toast.error("Could not copy HTML. Please copy it manually from the edit screen.");
+  }
+
+  // Deep-link to eBay's selling page. Title can be pre-filled.
   const encodedTitle = encodeURIComponent(listing.ebay.title);
   const ebaySellUrl = `https://www.ebay.com/sl/prelist/suggest?title=${encodedTitle}`;
   
@@ -19,33 +38,16 @@ export const listOnEbay = (listing: Listing, authToken: string): void => {
 };
 
 /**
- * Verifies an eBay OAuth token by making a lightweight, real API call.
- * @param token The eBay OAuth token.
- * @returns A promise that resolves to true if the token is valid, false otherwise.
+ * Verifies that all required eBay API credential fields are non-empty.
+ * NOTE: This is a superficial check. A real-world application would require a server-side
+ * component to perform a live API call to validate OAuth tokens.
+ * @param credentials An object containing mock eBay credentials.
+ * @returns A promise that resolves to true if all keys are present, false otherwise.
  */
-export const verifyEbayToken = async (token: string): Promise<boolean> => {
-    if (!token || !token.trim()) {
-        return false;
-    }
+export const verifyEbayCredentials = async (credentials: EbayCredentials): Promise<boolean> => {
+    // Simulate a brief network delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // This is a lightweight endpoint that requires authentication, perfect for validation.
-    const validationEndpoint = 'https://api.ebay.com/sell/account/v1/payment_policy';
-
-    try {
-        const response = await fetch(validationEndpoint, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-            },
-        });
-        
-        // A successful response (e.g., 200 OK) means the token is valid.
-        // A 401 Unauthorized or other error means it's invalid.
-        return response.ok;
-
-    } catch (error) {
-        console.error("Error verifying eBay token:", error);
-        return false;
-    }
+    const { appId, certId, devId, authToken } = credentials;
+    return !!(appId?.trim() && certId?.trim() && devId?.trim() && authToken?.trim());
 };

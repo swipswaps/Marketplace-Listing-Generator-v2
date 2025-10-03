@@ -1,181 +1,121 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Listing } from '../types';
 import { GeneratedListing } from './GeneratedListing';
-import { SearchIcon, DownloadIcon, DeleteIcon } from './icons';
-import { exportAsPdf, exportAsCsv, exportAsSql } from '../utils/exportUtils';
-
-interface ApiKeys {
-    gemini: string;
-    ebay: string;
-    twitter: {
-      apiKey: string;
-      apiSecret: string;
-      accessToken: string;
-      accessSecret: string;
-    };
-}
+import { SearchIcon, DownloadIcon } from './icons';
+import { exportAsCsv, exportAsPdf, exportAsSql } from '../utils/exportUtils';
 
 interface ListingHistoryProps {
   listings: Listing[];
-  apiKeys: ApiKeys;
-  searchTerm: string;
-  setSearchTerm: (term: string) => void;
-  sortOrder: string;
-  setSortOrder: (order: string) => void;
-  filterCategory: string;
-  setFilterCategory: (category: string) => void;
-  availableCategories: string[];
+  onEdit: (listing: Listing) => void;
   onDelete: (id: string) => void;
-  onEdit: (id: string) => void;
-  onClear: () => void;
+  onPostEbay: (listing: Listing) => void;
+  onPostTwitter: (listing: Listing) => void;
   isEbayConfigured: boolean;
   isTwitterConfigured: boolean;
 }
 
-const ExportDropdown: React.FC<{ listings: Listing[] }> = ({ listings }) => {
-    const [isOpen, setIsOpen] = useState(false);
+export const ListingHistory: React.FC<ListingHistoryProps> = ({ listings, onEdit, onDelete, onPostEbay, onPostTwitter, isEbayConfigured, isTwitterConfigured }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
-    const handleExport = (e: React.MouseEvent, format: 'pdf' | 'csv' | 'xls' | 'sql') => {
-        e.preventDefault();
-        if (listings.length === 0) {
-            alert("There are no listings to export.");
-            return;
-        }
-        switch (format) {
-            case 'pdf': exportAsPdf(listings); break;
-            case 'csv': exportAsCsv(listings); break;
-            case 'xls': exportAsCsv(listings, true); break;
-            case 'sql': exportAsSql(listings); break;
-        }
-        setIsOpen(false);
-    };
+  const filteredListings = useMemo(() => {
+    if (!searchTerm) {
+      return listings;
+    }
+    const lowercasedTerm = searchTerm.toLowerCase();
+    return listings.filter(
+      (listing) =>
+        listing.title.toLowerCase().includes(lowercasedTerm) ||
+        listing.description.toLowerCase().includes(lowercasedTerm) ||
+        listing.category.toLowerCase().includes(lowercasedTerm)
+    );
+  }, [listings, searchTerm]);
+  
+  const handleExport = (format: 'csv' | 'xls' | 'pdf' | 'sql') => {
+    setIsExportMenuOpen(false);
+    if (filteredListings.length === 0) {
+        alert("There are no listings to export.");
+        return;
+    }
+    switch (format) {
+        case 'csv':
+            exportAsCsv(filteredListings);
+            break;
+        case 'xls':
+            exportAsCsv(filteredListings, true);
+            break;
+        case 'pdf':
+            exportAsPdf(filteredListings);
+            break;
+        case 'sql':
+            exportAsSql(filteredListings);
+            break;
+    }
+  };
 
-    return (
-        <div className="relative inline-block text-left">
-            <div>
-                <button
-                    type="button"
-                    onClick={() => setIsOpen(!isOpen)}
-                    className="inline-flex items-center justify-center w-full rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none"
-                    id="menu-button"
-                    aria-expanded="true"
-                    aria-haspopup="true"
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <h2 className="text-2xl font-bold text-slate-900">Listing History</h2>
+        
+        <div className="flex items-center gap-4">
+            <div className="relative flex-grow">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <SearchIcon className="h-5 w-5 text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search listings..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full block rounded-md border-slate-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="relative">
+                <button 
+                    onClick={() => setIsExportMenuOpen(prev => !prev)}
+                    className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50"
                 >
-                    <DownloadIcon className="h-5 w-5 mr-2 text-slate-500"/>
+                    <DownloadIcon className="h-5 w-5 mr-2" />
                     Export
                 </button>
-            </div>
-            {isOpen && (
-                <div
-                    className="origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10"
-                    role="menu"
-                    aria-orientation="vertical"
-                    aria-labelledby="menu-button"
-                >
-                    <div className="py-1" role="none">
-                        <a href="#" onClick={(e) => handleExport(e, 'pdf')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as PDF</a>
-                        <a href="#" onClick={(e) => handleExport(e, 'csv')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as CSV</a>
-                        <a href="#" onClick={(e) => handleExport(e, 'xls')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as XLS</a>
-                        <a href="#" onClick={(e) => handleExport(e, 'sql')} className="text-slate-700 block px-4 py-2 text-sm hover:bg-slate-100" role="menuitem">Save as SQL</a>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-
-export const ListingHistory: React.FC<ListingHistoryProps> = (props) => {
-    const { listings, apiKeys, searchTerm, setSearchTerm, sortOrder, setSortOrder, filterCategory, setFilterCategory, availableCategories, onDelete, onEdit, onClear, isEbayConfigured, isTwitterConfigured } = props;
-
-    return (
-        <div className="flex flex-col h-full">
-            <div className="flex-shrink-0">
-                <div className="flex justify-between items-center pb-4 border-b mb-4">
-                    <div>
-                        <h2 className="text-xl font-semibold text-slate-800">2. Listing History</h2>
-                        <p className="text-sm text-slate-500">Manage and export your generated listings.</p>
-                    </div>
-                     {listings.length > 0 && (
-                        <div className="flex items-center space-x-2">
-                           <ExportDropdown listings={listings} />
-                           <button
-                                onClick={onClear}
-                                className="inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800"
-                                title="Clear History"
-                            >
-                                <DeleteIcon className="h-5 w-5" />
-                            </button>
+                {isExportMenuOpen && (
+                    <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                        <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                            <a href="#" onClick={(e) => { e.preventDefault(); handleExport('csv') }} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" role="menuitem">Export as CSV</a>
+                            <a href="#" onClick={(e) => { e.preventDefault(); handleExport('xls') }} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" role="menuitem">Export as XLS</a>
+                            <a href="#" onClick={(e) => { e.preventDefault(); handleExport('pdf') }} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" role="menuitem">Export as PDF</a>
+                            <a href="#" onClick={(e) => { e.preventDefault(); handleExport('sql') }} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" role="menuitem">Export as SQL</a>
                         </div>
-                    )}
-                </div>
-            
-                {/* Controls */}
-                <div className="space-y-4 mb-4">
-                    <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                            <SearchIcon className="h-5 w-5 text-slate-400" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search listings..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full rounded-md border-slate-300 pl-10 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="sort-order" className="block text-sm font-medium text-slate-700">Sort by</label>
-                            <select
-                                id="sort-order"
-                                value={sortOrder}
-                                onChange={(e) => setSortOrder(e.target.value)}
-                                className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                            >
-                                <option value="date-desc">Date: Newest</option>
-                                <option value="date-asc">Date: Oldest</option>
-                                <option value="price-desc">Price: High-Low</option>
-                                <option value="price-asc">Price: Low-High</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label htmlFor="filter-category" className="block text-sm font-medium text-slate-700">Category</label>
-                            <select
-                                id="filter-category"
-                                value={filterCategory}
-                                onChange={(e) => setFilterCategory(e.target.value)}
-                                className="mt-1 block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
-                            >
-                                {availableCategories.map(cat => (
-                                    <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* List */}
-            <div className="flex-grow overflow-y-auto space-y-3 pr-2 -mr-2">
-                 {listings.length > 0 ? (
-                    listings.map(listing => (
-                        <GeneratedListing
-                            key={listing.id}
-                            listing={listing}
-                            apiKeys={apiKeys}
-                            isEbayConfigured={isEbayConfigured}
-                            isTwitterConfigured={isTwitterConfigured}
-                            onDelete={onDelete}
-                            onEdit={onEdit}
-                        />
-                    ))
-                ) : (
-                    <div className="text-center text-slate-400 py-16">
-                        <p>Your generated listings will appear here.</p>
                     </div>
                 )}
             </div>
         </div>
-    );
+      </div>
+      
+      {filteredListings.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredListings.map((listing) => (
+            <GeneratedListing 
+                key={listing.id} 
+                listing={listing} 
+                onEdit={onEdit} 
+                onDelete={onDelete}
+                onPostEbay={onPostEbay}
+                onPostTwitter={onPostTwitter}
+                isEbayConfigured={isEbayConfigured}
+                isTwitterConfigured={isTwitterConfigured}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-lg">
+          <p className="text-slate-500">
+            {listings.length > 0 ? "No listings match your search." : "Your generated listings will appear here."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 };

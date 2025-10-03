@@ -1,556 +1,288 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ImagePreview } from './components/ImagePreview';
-import { ListingHistory } from './components/ListingHistory';
-import { UploadIcon, SparklesIcon, SettingsIcon, CloseIcon, CheckIcon, ErrorIcon, InfoIcon } from './components/icons';
-import { generateListing, verifyGeminiApiKey } from './services/geminiService';
-import { verifyEbayToken } from './services/ebayService';
-import { verifyTwitterCredentials } from './services/twitterService';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Listing } from './types';
+import { generateListing, verifyGeminiApiKey } from './services/geminiService';
+import { postToEbay } from './services/ebayService';
+import { postToX } from './services/twitterService';
+import { dbService } from './services/dbService';
+import { ImagePreview } from './components/ImagePreview';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
+import { ListingHistory } from './components/ListingHistory';
 import { EditListingModal } from './components/EditListingModal';
-import { fileToBase64 } from './utils/fileUtils';
+import { UploadIcon, SparklesIcon, SettingsIcon, CheckIcon, ErrorIcon } from './components/icons';
+import { Toaster, toast } from 'react-hot-toast';
 
-interface ApiKeys {
-  gemini: string;
-  ebay: string;
-  twitter: {
-    apiKey: string;
-    apiSecret: string;
-    accessToken: string;
-    accessSecret: string;
-  };
-}
-
-const defaultApiKeys: ApiKeys = {
-  gemini: '',
-  ebay: '',
-  twitter: { apiKey: '', apiSecret: '', accessToken: '', accessSecret: '' },
-};
-
-// Helper function to safely load state from localStorage
-const loadState = <T,>(key: string, defaultValue: T): T => {
-  try {
-    const savedState = localStorage.getItem(key);
-    if (savedState) {
-      const parsed = JSON.parse(savedState);
-      // Basic merge to ensure new keys in default are respected
-      if (typeof parsed === 'object' && parsed !== null && typeof defaultValue === 'object' && defaultValue !== null) {
-        return { ...defaultValue, ...parsed };
-      }
-      return parsed;
-    }
-  } catch (e) {
-    console.error(`Failed to parse state for key "${key}" from localStorage`, e);
-    localStorage.removeItem(key); // Clear corrupted data
-  }
-  return defaultValue;
+// A simple settings modal for platform toggles
+const SettingsModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  isEbayConfigured: boolean;
+  setIsEbayConfigured: (v: boolean) => void;
+  isTwitterConfigured: boolean;
+  setIsTwitterConfigured: (v: boolean) => void;
+}> = ({ isOpen, onClose, isEbayConfigured, setIsEbayConfigured, isTwitterConfigured, setIsTwitterConfigured }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-xl font-bold mb-4">Settings</h2>
+        <div className="space-y-4">
+          <label className="flex items-center space-x-3">
+            <input type="checkbox" checked={isEbayConfigured} onChange={(e) => setIsEbayConfigured(e.target.checked)} className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500" />
+            <span>Generate content for eBay</span>
+          </label>
+          <label className="flex items-center space-x-3">
+            <input type="checkbox" checked={isTwitterConfigured} onChange={(e) => setIsTwitterConfigured(e.target.checked)} className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500" />
+            <span>Generate content for X (Twitter)</span>
+          </label>
+        </div>
+        <button onClick={onClose} className="mt-6 w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">Done</button>
+      </div>
+    </div>
+  );
 };
 
 
 const App: React.FC = () => {
-  // Form State
   const [images, setImages] = useState<File[]>([]);
-  const [notes, setNotes] = useState<string>('');
-  
-  // App State
-  const [listings, setListings] = useState<Listing[]>(() => loadState('listings', []));
-  const [variations, setVariations] = useState<Omit<Listing, 'id' | 'createdAt'>[] | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  
-  // Settings & Modals State
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [notes, setNotes] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [geminiVerified, setGeminiVerified] = useState<boolean | null>(null);
+
+  const [generatedVariations, setGeneratedVariations] = useState<Omit<Listing, 'id' | 'createdAt' | 'images'>[]>([]);
+  const [isVariationModalOpen, setIsVariationModalOpen] = useState(false);
+
+  const [listings, setListings] = useState<Listing[]>([]);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
-  const [apiKeys, setApiKeys] = useState<ApiKeys>(() => loadState('apiKeys', defaultApiKeys));
-
-  // History Management State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('date-desc');
-  const [filterCategory, setFilterCategory] = useState('all');
-
-  // Persist state to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
-  }, [apiKeys]);
   
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isEbayConfigured, setIsEbayConfigured] = useState(true);
+  const [isTwitterConfigured, setIsTwitterConfigured] = useState(true);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load saved data from localStorage on initial render
   useEffect(() => {
-    localStorage.setItem('listings', JSON.stringify(listings));
-  }, [listings]);
+    try {
+      const savedListings = localStorage.getItem('listings');
+      if (savedListings) {
+        setListings(JSON.parse(savedListings));
+      }
+      const savedEbay = localStorage.getItem('isEbayConfigured');
+      if (savedEbay) {
+        setIsEbayConfigured(JSON.parse(savedEbay));
+      }
+      const savedTwitter = localStorage.getItem('isTwitterConfigured');
+      if (savedTwitter) {
+        setIsTwitterConfigured(JSON.parse(savedTwitter));
+      }
+    } catch (error) {
+      console.error("Failed to load data from localStorage", error);
+      toast.error("Could not load saved data.");
+    }
+  }, []);
+  
+  // Verify Gemini API key status on mount
+  useEffect(() => {
+    verifyGeminiApiKey().then(isValid => {
+      setGeminiVerified(isValid);
+    });
+  }, []);
 
-  const isGeminiConfigured = !!apiKeys.gemini;
-  const isEbayConfigured = !!apiKeys.ebay;
-  const isTwitterConfigured = !!apiKeys.twitter.apiKey && !!apiKeys.twitter.apiSecret && !!apiKeys.twitter.accessToken && !!apiKeys.twitter.accessSecret;
+  // Save data to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('listings', JSON.stringify(listings));
+      localStorage.setItem('isEbayConfigured', JSON.stringify(isEbayConfigured));
+      localStorage.setItem('isTwitterConfigured', JSON.stringify(isTwitterConfigured));
+    } catch (error) {
+      console.error("Failed to save data to localStorage", error);
+      toast.error("Could not save changes.");
+    }
+  }, [listings, isEbayConfigured, isTwitterConfigured]);
 
-  const handleFileChange = (files: FileList | null) => {
-    if (files) {
-      const newFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-      setImages(prev => [...prev, ...newFiles].slice(0, 4));
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setImages(prev => [...prev, ...newFiles].slice(0, 10)); // Limit to 10 images
     }
   };
-  
-  const handleRemoveImage = (index: number) => {
+
+  const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
-  
-  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
 
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
-    setIsDragging(false);
-  };
-  
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileChange(e.dataTransfer.files);
-      e.dataTransfer.clearData();
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isGeminiConfigured) {
-      setError('Please configure your Gemini API key in the settings.');
-      setIsSettingsOpen(true);
-      return;
-    }
+  const handleGenerateClick = async () => {
     if (images.length === 0) {
-      setError('Please upload at least one image.');
+      toast.error('Please upload at least one image.');
       return;
     }
-    
+    if (!geminiVerified) {
+      toast.error('Gemini API key is not valid or missing from environment variables.');
+      return;
+    }
     setIsLoading(true);
-    setError(null);
-    
+    toast.loading('Generating listings... this may take a moment.');
     try {
-      const imagePayload = await Promise.all(images.map(async (file) => ({
-        data: await fileToBase64(file),
-        type: file.type,
-      })));
-
-      const generatedData = await generateListing(images, notes, apiKeys.gemini, isEbayConfigured, isTwitterConfigured);
-      
-      const variationsWithImages = generatedData.map(v => ({ ...v, images: imagePayload }));
-      
-      setVariations(variationsWithImages);
-      setImages([]);
-      setNotes('');
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An unknown error occurred during generation.');
-      }
+      const variations = await generateListing(images, notes, isEbayConfigured, isTwitterConfigured);
+      setGeneratedVariations(variations);
+      setIsVariationModalOpen(true);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
       setIsLoading(false);
+      toast.dismiss();
     }
   };
 
-  const handleSelectVariation = (variation: Omit<Listing, 'id' | 'createdAt'>, selectedPrice: number) => {
-    const newListing: Listing = {
-      ...variation,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      selectedPrice: selectedPrice,
-    };
-    setListings(prev => [newListing, ...prev]);
-  };
-
-  const handleDeleteListing = (id: string) => {
-    setListings(prev => prev.filter(l => l.id !== id));
-  };
+  const handleSelectVariation = useCallback(async (variation: Omit<Listing, 'id' | 'createdAt' | 'images'>, selectedPrice: number) => {
+    try {
+        const imageKeys = await dbService.saveImages(images);
+        const newListing: Listing = {
+            ...variation,
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            images: imageKeys,
+            selectedPrice,
+        };
+        setListings(prev => [newListing, ...prev]);
+        toast.success('Listing added to history!');
+    } catch (error) {
+        console.error("Failed to save listing:", error);
+        toast.error("Could not save the listing.");
+    }
+  }, [images]);
 
   const handleUpdateListing = (updatedListing: Listing) => {
     setListings(prev => prev.map(l => l.id === updatedListing.id ? updatedListing : l));
     setEditingListing(null);
+    toast.success('Listing updated!');
   };
 
-  const handleOpenEditModal = (id: string) => {
-    const listingToEdit = listings.find(l => l.id === id);
-    if (listingToEdit) {
-      setEditingListing(listingToEdit);
+  const handleDeleteListing = async (id: string) => {
+    const listingToDelete = listings.find(l => l.id === id);
+    if (listingToDelete) {
+        await dbService.deleteImages(listingToDelete.images);
     }
+    setListings(prev => prev.filter(l => l.id !== id));
+    toast.success('Listing deleted.');
   };
-  
-  const handleClearHistory = () => {
-    if (window.confirm('Are you sure you want to delete all listings? This cannot be undone.')) {
-        setListings([]);
-    }
-  };
-
-  const filteredAndSortedListings = useMemo(() => {
-    return listings
-      .filter(listing => {
-        if (filterCategory !== 'all' && listing.category !== filterCategory) {
-          return false;
-        }
-        const lowerSearchTerm = searchTerm.toLowerCase();
-        if (lowerSearchTerm && 
-            !listing.title.toLowerCase().includes(lowerSearchTerm) && 
-            !listing.description.toLowerCase().includes(lowerSearchTerm)) {
-          return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        switch (sortOrder) {
-          case 'date-asc':
-            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-          case 'price-desc':
-            return b.selectedPrice - a.selectedPrice;
-          case 'price-asc':
-            return a.selectedPrice - b.selectedPrice;
-          case 'date-desc':
-          default:
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        }
-      });
-  }, [listings, searchTerm, sortOrder, filterCategory]);
-
-  const availableCategories = useMemo(() => ['all', ...Array.from(new Set(listings.map(l => l.category)))], [listings]);
 
   return (
-    <div className="bg-slate-50 min-h-screen font-sans text-slate-800">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <SparklesIcon className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-slate-900">AI Listing Generator</h1>
-          </div>
-          <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-slate-100" aria-label="Settings">
-            <SettingsIcon className="h-6 w-6 text-slate-600" />
-          </button>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-800 mb-6">1. Add a New Product</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              
-              <div 
-                className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 hover:border-slate-400'}`}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragEvents}
-                onDrop={handleDrop}
-              >
-                <UploadIcon className="mx-auto h-12 w-12 text-slate-400" />
-                <label htmlFor="file-upload" className="relative cursor-pointer">
-                  <span className="mt-2 block text-sm font-medium text-indigo-600">
-                    Click to upload
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500"> or drag and drop</span>
-                </label>
-                <input 
-                  id="file-upload" 
-                  name="file-upload" 
-                  type="file" 
-                  className="sr-only" 
-                  multiple 
-                  accept="image/*"
-                  onChange={e => handleFileChange(e.target.files)}
-                />
-                <p className="text-xs text-slate-500 mt-2">PNG, JPG, etc. Max 4 images.</p>
-              </div>
-
-              <ImagePreview images={images} onRemove={handleRemoveImage} />
-              
-              <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-2">
-                  Optional Notes
-                </label>
-                <textarea
-                  id="notes"
-                  name="notes"
-                  rows={4}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                  placeholder="e.g., 'Slight scratch on the back', 'Never opened', 'Comes with original box'"
-                />
-              </div>
-
-               {error && (
-                <div className="text-center text-red-600 bg-red-50 p-4 rounded-lg">
-                  <p className="text-sm">{error}</p>
-                </div>
-              )}
-
-              <div className="flex items-center space-x-4">
-                 <button
-                  type="submit"
-                  disabled={isLoading || images.length === 0}
-                  className="inline-flex items-center justify-center w-full px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isLoading ? 'Generating...' : 'Generate Listing Variations'}
-                  <SparklesIcon className={`ml-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-            </form>
-          </div>
-          
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <ListingHistory
-              listings={filteredAndSortedListings}
-              apiKeys={apiKeys}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              sortOrder={sortOrder}
-              setSortOrder={setSortOrder}
-              filterCategory={filterCategory}
-              setFilterCategory={setFilterCategory}
-              availableCategories={availableCategories}
-              onDelete={handleDeleteListing}
-              onEdit={handleOpenEditModal}
-              onClear={handleClearHistory}
-              isEbayConfigured={isEbayConfigured}
-              isTwitterConfigured={isTwitterConfigured}
-            />
-          </div>
-        </div>
-      </main>
-      
-      {variations && (
-        <VariationSelectionModal 
-          variations={variations}
+    <>
+      <Toaster position="top-center" reverseOrder={false} />
+      {isVariationModalOpen && (
+        <VariationSelectionModal
+          variations={generatedVariations}
           onSelect={handleSelectVariation}
-          onClose={() => setVariations(null)}
-        />
-      )}
-
-      {isSettingsOpen && (
-        <SettingsModal 
-          initialKeys={apiKeys}
-          onClose={() => setIsSettingsOpen(false)} 
-          onSave={(newKeys) => {
-            setApiKeys(newKeys);
-            setIsSettingsOpen(false);
+          onClose={() => {
+            setIsVariationModalOpen(false);
+            // Reset form for next use
+            setImages([]);
+            setNotes('');
           }}
         />
       )}
-
       {editingListing && (
-        <EditListingModal
+        <EditListingModal 
           listing={editingListing}
           onSave={handleUpdateListing}
           onClose={() => setEditingListing(null)}
         />
       )}
-    </div>
-  );
-};
+      <SettingsModal 
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        isEbayConfigured={isEbayConfigured}
+        setIsEbayConfigured={setIsEbayConfigured}
+        isTwitterConfigured={isTwitterConfigured}
+        setIsTwitterConfigured={setIsTwitterConfigured}
+      />
 
-interface SettingsModalProps {
-  initialKeys: ApiKeys;
-  onClose: () => void;
-  onSave: (keys: ApiKeys) => void;
-}
-
-type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
-
-const SettingsModal: React.FC<SettingsModalProps> = ({ initialKeys, onClose, onSave }) => {
-  const [keys, setKeys] = useState<ApiKeys>(initialKeys);
-  const [validationStatus, setValidationStatus] = useState({
-    gemini: 'idle' as ValidationStatus,
-    ebay: 'idle' as ValidationStatus,
-    twitter: 'idle' as ValidationStatus
-  });
-
-  const handleVerifyGemini = async () => {
-    setValidationStatus(prev => ({ ...prev, gemini: 'validating' }));
-    const isValid = await verifyGeminiApiKey(keys.gemini);
-    setValidationStatus(prev => ({ ...prev, gemini: isValid ? 'valid' : 'invalid' }));
-  }
-
-  const handleVerifyEbay = async () => {
-    setValidationStatus(prev => ({ ...prev, ebay: 'validating' }));
-    const isValid = await verifyEbayToken(keys.ebay);
-    setValidationStatus(prev => ({ ...prev, ebay: isValid ? 'valid' : 'invalid' }));
-  };
-
-  const handleVerifyTwitter = async () => {
-    setValidationStatus(prev => ({ ...prev, twitter: 'validating' }));
-    const isValid = await verifyTwitterCredentials(keys.twitter);
-    setValidationStatus(prev => ({ ...prev, twitter: isValid ? 'valid' : 'invalid' }));
-  };
-  
-  const handleSave = () => {
-    onSave(keys);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    if (name.startsWith('twitter.')) {
-        const twitterKey = name.split('.')[1] as keyof ApiKeys['twitter'];
-        setKeys(prev => ({
-            ...prev,
-            twitter: { ...prev.twitter, [twitterKey]: value }
-        }));
-        setValidationStatus(prev => ({ ...prev, twitter: 'idle' }));
-    } else {
-        const key = name as keyof Omit<ApiKeys, 'twitter'>;
-        setKeys(prev => ({ ...prev, [key]: value }));
-        setValidationStatus(prev => ({ ...prev, [name]: 'idle' }));
-    }
-  };
-  
-  const StatusIndicator: React.FC<{ status: ValidationStatus }> = ({ status }) => {
-    switch (status) {
-      case 'validating':
-        return <SparklesIcon className="h-5 w-5 text-slate-400 animate-spin" />;
-      case 'valid':
-        return <CheckIcon className="h-5 w-5 text-green-500" />;
-      case 'invalid':
-        return <ErrorIcon className="h-5 w-5 text-red-500" />;
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <div className="flex items-center space-x-3">
-            <SettingsIcon className="h-6 w-6 text-slate-700"/>
-            <h2 className="text-xl font-semibold text-slate-800">Settings</h2>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100">
-            <CloseIcon className="h-5 w-5 text-slate-500"/>
-          </button>
-        </div>
-        
-        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
-
-          {/* Gemini Settings */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-900">Google Gemini</h3>
-            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-                <div className="flex">
-                    <div className="flex-shrink-0">
-                        <InfoIcon className="h-5 w-5 text-blue-400" />
-                    </div>
-                    <div className="ml-3">
-                        <p className="text-sm text-blue-800">
-                            A Gemini API key is **required** to generate listings. You can get your free key from Google AI Studio.
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="font-semibold underline hover:text-blue-600 ml-1">
-                                Get API Key &rarr;
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <label htmlFor="gemini" className="block text-sm font-medium text-slate-700">API Key</label>
-                 <div className="flex items-center space-x-2 mt-1">
-                    <input type="password" name="gemini" id="gemini" value={keys.gemini} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    <button onClick={handleVerifyGemini} disabled={!keys.gemini || validationStatus.gemini === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
-                    <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.gemini} /></div>
-                </div>
-                 {validationStatus.gemini === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid or incorrect Gemini API Key.</p>}
-            </div>
-          </div>
-
-          {/* eBay Settings */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-900">eBay</h3>
-             <div className="bg-slate-50 border-l-4 border-slate-400 p-4 rounded-r-lg">
-                <div className="flex">
-                    <div className="flex-shrink-0">
-                        <InfoIcon className="h-5 w-5 text-slate-500" />
-                    </div>
-                    <div className="ml-3">
-                        <p className="text-sm text-slate-700">
-                            **Optional.** Required to enable the "List on eBay" feature. Follow eBay's instructions to generate a User Access Token.
-                            <a href="https://developer.ebay.com/api-docs/static/oauth-tokens.html" target="_blank" rel="noopener noreferrer" className="font-semibold underline text-slate-800 hover:text-slate-600 ml-1">
-                                Learn More &rarr;
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <label htmlFor="ebay" className="block text-sm font-medium text-slate-700">OAuth Token</label>
-                 <div className="flex items-center space-x-2 mt-1">
-                    <input type="password" name="ebay" id="ebay" value={keys.ebay} onChange={handleInputChange} className="block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                    <button onClick={handleVerifyEbay} disabled={!keys.ebay || validationStatus.ebay === 'validating'} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50">Verify</button>
-                    <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.ebay} /></div>
-                </div>
-                 {validationStatus.ebay === 'invalid' && <p className="text-xs text-red-600 mt-1">Invalid or expired eBay Token.</p>}
-            </div>
-          </div>
-
-          {/* Twitter Settings */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-900">X (Twitter)</h3>
-            <div className="bg-slate-50 border-l-4 border-slate-400 p-4 rounded-r-lg">
-                <div className="flex">
-                    <div className="flex-shrink-0">
-                        <InfoIcon className="h-5 w-5 text-slate-500" />
-                    </div>
-                    <div className="ml-3">
-                        <p className="text-sm text-slate-700">
-                            **Optional.** Required to enable the "Post to X" feature. Get your four keys from the X developer portal dashboard.
-                            <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" className="font-semibold underline text-slate-800 hover:text-slate-600 ml-1">
-                                Go to Dashboard &rarr;
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div>
-                    <label htmlFor="twitter.apiKey" className="block text-sm font-medium text-slate-700">API Key</label>
-                    <input type="password" name="twitter.apiKey" id="twitter.apiKey" value={keys.twitter.apiKey} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                </div>
-                 <div>
-                    <label htmlFor="twitter.apiSecret" className="block text-sm font-medium text-slate-700">API Key Secret</label>
-                    <input type="password" name="twitter.apiSecret" id="twitter.apiSecret" value={keys.twitter.apiSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                </div>
-                 <div>
-                    <label htmlFor="twitter.accessToken" className="block text-sm font-medium text-slate-700">Access Token</label>
-                    <input type="password" name="twitter.accessToken" id="twitter.accessToken" value={keys.twitter.accessToken} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                </div>
-                 <div>
-                    <label htmlFor="twitter.accessSecret" className="block text-sm font-medium text-slate-700">Access Token Secret</label>
-                    <input type="password" name="twitter.accessSecret" id="twitter.accessSecret" value={keys.twitter.accessSecret} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                </div>
-            </div>
-            <div className="flex items-center space-x-2 mt-2">
-                <button 
-                  onClick={handleVerifyTwitter} 
-                  disabled={Object.values(keys.twitter).some(k => !k) || validationStatus.twitter === 'validating'} 
-                  className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Verify
+      <div className="min-h-screen bg-slate-50 text-slate-800">
+        <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+          
+          <header className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-slate-900">AI Listing Generator</h1>
+            <div className='flex items-center space-x-4'>
+                {geminiVerified === true && <div className="flex items-center space-x-2 text-green-600"><CheckIcon className="h-5 w-5" /><span className='text-sm font-medium'>Gemini Ready</span></div>}
+                {geminiVerified === false && <div className="flex items-center space-x-2 text-red-600"><ErrorIcon className="h-5 w-5" /><span className='text-sm font-medium'>Gemini Error</span></div>}
+                <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 rounded-full hover:bg-slate-200" aria-label="Settings">
+                    <SettingsIcon className="h-6 w-6 text-slate-600"/>
                 </button>
-                <div className="w-5 h-5 flex items-center justify-center"><StatusIndicator status={validationStatus.twitter} /></div>
             </div>
-            {validationStatus.twitter === 'invalid' && <p className="text-xs text-red-600 mt-1">All four Twitter keys are required.</p>}
-          </div>
-        </div>
-        
-        <div className="flex items-center justify-end p-6 border-t border-slate-200 bg-slate-50 rounded-b-xl">
-          <button onClick={handleSave} className="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            Save & Close
-          </button>
+          </header>
+
+          <main className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Left side - Inputs */}
+              <div className="space-y-6">
+                <div>
+                  <label className="text-lg font-semibold text-slate-700 mb-2 block">1. Upload Images</label>
+                  <div 
+                    className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <UploadIcon className="h-12 w-12 mx-auto text-slate-400"/>
+                    <p className="mt-2 text-slate-600">Drag & drop files here, or click to select files</p>
+                    <p className="text-xs text-slate-500">Up to 10 images. PNG, JPG, WEBP accepted.</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/png, image/jpeg, image/webp"
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
+                  </div>
+                  <ImagePreview images={images} onRemove={removeImage} />
+                </div>
+
+                <div>
+                  <label htmlFor="notes" className="text-lg font-semibold text-slate-700 mb-2 block">2. Add Notes</label>
+                  <textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={5}
+                    placeholder="e.g., 'Small scratch on the back corner', 'Comes with original box and charger', 'Model A1989'"
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* Right side - Action */}
+              <div className="flex flex-col items-center justify-center bg-slate-50 p-8 rounded-xl">
+                 <h2 className="text-xl font-bold text-center text-slate-800">Ready to Sell?</h2>
+                 <p className="text-slate-600 text-center mt-2 mb-6">Let AI craft the perfect listing for you based on real market data.</p>
+                <button
+                  onClick={handleGenerateClick}
+                  disabled={isLoading || images.length === 0}
+                  className="w-full max-w-xs flex items-center justify-center px-8 py-4 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-transform transform hover:scale-105"
+                >
+                  <SparklesIcon className="h-6 w-6 mr-3"/>
+                  {isLoading ? 'Generating...' : 'Generate 3 Listings'}
+                </button>
+              </div>
+            </div>
+          </main>
+
+          <section className="mt-12">
+            <ListingHistory 
+              listings={listings} 
+              onEdit={setEditingListing}
+              onDelete={handleDeleteListing}
+              onPostEbay={(listing) => postToEbay(listing)}
+              onPostTwitter={(listing) => postToX(listing, {})} // Assuming no client-side keys for twitter
+              isEbayConfigured={isEbayConfigured}
+              isTwitterConfigured={isTwitterConfigured}
+            />
+          </section>
+
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

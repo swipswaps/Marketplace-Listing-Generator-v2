@@ -95,18 +95,21 @@ const twitterSchemaProperty = {
 };
 
 
+// FIX: Removed `geminiApiKey` parameter to adhere to security guidelines.
+// The API key should be exclusively managed via environment variables.
 export const generateListing = async (
   images: File[],
   notes: string,
-  geminiApiKey: string,
   isEbayConfigured: boolean,
   isTwitterConfigured: boolean,
-): Promise<Omit<Listing, 'id' | 'createdAt'>[]> => {
-  if (!geminiApiKey) {
-    throw new Error("Gemini API key is not configured. Please add it in the settings.");
+): Promise<Omit<Listing, 'id' | 'createdAt' | 'images'>[]> => {
+  // FIX: Use `process.env.API_KEY` directly as per the coding guidelines.
+  // This avoids exposing the key management logic to the UI.
+  if (!process.env.API_KEY) {
+    throw new Error("Gemini API key is not configured in environment variables.");
   }
   
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   if (images.length === 0) {
     throw new Error("At least one image is required to generate a listing.");
@@ -191,7 +194,7 @@ export const generateListing = async (
       throw new Error("Failed to generate listing variations. The model returned an invalid format.");
     }
     // This is a type assertion. Add runtime validation if needed for robustness.
-    return listingData as Omit<Listing, 'id' | 'createdAt'>[];
+    return listingData as Omit<Listing, 'id' | 'createdAt' | 'images'>[];
   } catch (e) {
     console.error("Failed to parse Gemini response:", response.text, e);
     throw new Error("Failed to generate listing. The model returned an invalid JSON format.");
@@ -199,12 +202,14 @@ export const generateListing = async (
 };
 
 
-export const verifyGeminiApiKey = async (apiKey: string): Promise<boolean> => {
-  if (!apiKey) {
+// FIX: Removed `apiKey` parameter. The function now checks for the key in environment variables.
+export const verifyGeminiApiKey = async (): Promise<boolean> => {
+  // FIX: Check `process.env.API_KEY` instead of a passed-in key.
+  if (!process.env.API_KEY) {
     return false;
   }
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     // Make a lightweight, non-streaming call to check for authentication.
     await ai.models.generateContent({
       model: "gemini-2.5-flash",

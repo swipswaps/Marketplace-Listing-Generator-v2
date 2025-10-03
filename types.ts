@@ -15,10 +15,8 @@ export interface Listing {
     }[];
   };
   category: string;
-  images: {
-    data: string; // base64 encoded image
-    type: string; // e.g., 'image/jpeg'
-  }[];
+  // This will store keys/IDs to the images in IndexedDB, not the data itself.
+  images: string[];
   ebay?: {
     title: string;
     descriptionHtml: string;
