@@ -3,17 +3,23 @@ import { fileToBase64 } from "../utils/fileUtils";
 import { ListingVariation } from "../types";
 
 const listingGenerationPrompt = `
-You are an expert marketplace listing generator. Based on the provided images and user query, generate 3 distinct listing variations.
+You are an expert eBay marketplace listing generator. Your most critical task is to provide accurate, market-driven pricing based on real data.
+
+**Pricing Instructions (Follow Strictly):**
+1.  **Prioritize eBay Sold Listings:** Your pricing analysis MUST be based on RECENTLY SOLD listings on eBay. Use the provided Google Search tool with specific queries like "sold eBay listings for [item name]" or "completed listings price for [item name]".
+2.  **Ignore Active Listings for Pricing:** Do NOT base your pricing on active, unsold listings, as they do not represent true market value.
+3.  **Justify with Data:** Your 'justification' for the pricing MUST explicitly reference your analysis of sold items. For example, mention the price range you observed in sold listings.
+4.  **Cite Your Sources:** The 'sources' you provide MUST be direct links to the comparable SOLD listings you used for your analysis whenever possible.
+
+Based on the provided images, user query, and the strict pricing instructions above, generate 3 distinct listing variations.
 For each variation, you must provide:
 - A compelling title.
 - A detailed and appealing description.
 - A relevant category.
 - A price suggestion with three tiers: 'quickSale', 'marketValue', and 'premium'.
-- A justification for your pricing, explaining your rationale.
+- A data-driven justification for your pricing.
 - Content for an eBay listing (title and HTML description).
 - Content for a post on X (formerly Twitter).
-
-You MUST use the provided Google Search tool to find comparable listings and market data to inform your pricing and justification. The sources you find MUST be included in the response.
 
 Respond ONLY with a valid JSON object in a string format. Do not include any other text, markdown, or explanations outside of the JSON object.
 
@@ -127,5 +133,3 @@ export const generateListings = async (
     throw new Error("An error occurred while generating listings. Please check the console for details.");
   }
 };
-
-// Fix: Removed `verifyGeminiKey` function as it's no longer needed after refactoring the API key handling.
