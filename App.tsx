@@ -11,7 +11,6 @@ import { ImagePreview } from './components/ImagePreview';
 import { VariationSelectionModal } from './components/VariationSelectionModal';
 import { ListingHistory } from './components/ListingHistory';
 import { EditListingModal } from './components/EditListingModal';
-import { EbayRefinementModal } from './components/EbayRefinementModal';
 
 const initialApiKeys: ApiKeys = {
     geminiApiKey: '',
@@ -37,9 +36,7 @@ const App: React.FC = () => {
     const [imageKeysForVariations, setImageKeysForVariations] = useState<string[]>([]);
     const [showVariationModal, setShowVariationModal] = useState(false);
     const [editingListing, setEditingListing] = useState<Listing | null>(null);
-    const [refiningEbayListing, setRefiningEbayListing] = useState<Listing | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [isPosting, setIsPosting] = useState(false);
 
     // API Config State
     const [apiKeys, setApiKeys] = useState<ApiKeys>(() => {
@@ -151,21 +148,12 @@ const App: React.FC = () => {
     };
     
     const handlePostEbay = async (listing: Listing) => {
-        setIsPosting(true);
         try {
             postToEbay(listing, apiKeys);
             toast.success("Redirecting to eBay to complete your listing...");
         } catch (e: any) {
             toast.error(`An error occurred: ${e.message}`);
-        } finally {
-            setIsPosting(false);
-            setRefiningEbayListing(null);
         }
-    };
-    
-    const handleSaveRefinedListing = (refinedListing: Listing) => {
-        handleSaveListing(refinedListing);
-        handlePostEbay(refinedListing);
     };
 
     const handlePostTwitter = (listing: Listing) => {
@@ -262,7 +250,7 @@ const App: React.FC = () => {
                     listings={listings}
                     onEdit={setEditingListing}
                     onDelete={handleDeleteListing}
-                    onPostEbay={setRefiningEbayListing}
+                    onPostEbay={handlePostEbay}
                     onPostTwitter={handlePostTwitter}
                     isEbayConfigured={isEbayConfigured}
                     isTwitterConfigured={isTwitterConfigured}
@@ -292,15 +280,6 @@ const App: React.FC = () => {
                     listing={editingListing}
                     onSave={handleSaveListing}
                     onClose={() => setEditingListing(null)}
-                />
-            )}
-            {refiningEbayListing && (
-                 <EbayRefinementModal 
-                    listing={refiningEbayListing}
-                    onPost={handleSaveRefinedListing}
-                    onClose={() => setRefiningEbayListing(null)}
-                    isPosting={isPosting}
-                    apiKeys={apiKeys}
                 />
             )}
         </div>
@@ -350,10 +329,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ apiKeys, onSave, onClose 
         const result = await verifyEbayCredentials(localKeys);
         if (result.success) {
             setVerificationStatus(prev => ({ ...prev, ebay: 'success' }));
-            toast.success("eBay credentials verified successfully!");
+            toast.success("eBay credentials appear to be correctly formatted!");
         } else {
             setVerificationStatus(prev => ({ ...prev, ebay: 'error' }));
-            toast.error(`eBay verification failed: ${result.error}`);
+            toast.error(`eBay validation failed: ${result.error}`);
         }
     };
     
