@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { Listing, ListingVariation, ApiKeys } from './types';
 import { generateListings } from './services/geminiService';
@@ -34,6 +35,8 @@ const App: React.FC = () => {
 
     // Modal State
     const [variations, setVariations] = useState<ListingVariation[]>([]);
+    // FIX: Add state to hold image keys for the variations currently in the modal.
+    const [imageKeysForVariations, setImageKeysForVariations] = useState<string[]>([]);
     const [showVariationModal, setShowVariationModal] = useState(false);
     const [editingListing, setEditingListing] = useState<Listing | null>(null);
     const [refiningEbayListing, setRefiningEbayListing] = useState<Listing | null>(null);
@@ -41,23 +44,23 @@ const App: React.FC = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     // API Config State
-    const [apiKeys, setApiKeys] = useState<ApiKeys>(initialApiKeys);
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Load state from local storage on initial render
+    const [apiKeys, setApiKeys] = useState<ApiKeys>(() => {
+        try {
+            const savedApiKeys = localStorage.getItem('apiKeys');
+            return savedApiKeys ? JSON.parse(savedApiKeys) : initialApiKeys;
+        } catch {
+            return initialApiKeys;
+        }
+    });
+    
     useEffect(() => {
         try {
             const savedListings = localStorage.getItem('generatedListings');
             if (savedListings) {
                 setListings(JSON.parse(savedListings));
             }
-            const savedApiKeys = localStorage.getItem('apiKeys');
-            if (savedApiKeys) {
-                setApiKeys(JSON.parse(savedApiKeys));
-            }
         } catch (e) {
-            console.error("Failed to load data from localStorage", e);
+            console.error("Failed to load listings from localStorage", e);
         }
     }, []);
 
@@ -65,12 +68,21 @@ const App: React.FC = () => {
     useEffect(() => {
         try {
             localStorage.setItem('generatedListings', JSON.stringify(listings));
+        } catch (e) {
+            console.error("Failed to save listings to localStorage", e);
+        }
+    }, [listings]);
+    
+     useEffect(() => {
+        try {
             localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
         } catch (e) {
-            console.error("Failed to save data to localStorage", e);
+            console.error("Failed to save apiKeys to localStorage", e);
         }
-    }, [listings, apiKeys]);
+    }, [apiKeys]);
 
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -101,6 +113,9 @@ const App: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
+            // FIX: Store the generated image keys in state to be used when selecting a variation.
+            const imageKeys = await dbService.saveImages(images);
+            setImageKeysForVariations(imageKeys);
             const result = await generateListings(images, userQuery, apiKeys.geminiApiKey);
             setVariations(result);
             setShowVariationModal(true);
@@ -112,21 +127,16 @@ const App: React.FC = () => {
         }
     };
     
-    const handleSelectVariation = async (variation: Omit<Listing, 'id' | 'createdAt' | 'images' | 'selectedPrice'>, selectedPrice: number) => {
-        try {
-            const imageKeys = await dbService.saveImages(images);
-            const newListing: Listing = {
-                ...variation,
-                id: crypto.randomUUID(),
-                createdAt: new Date().toISOString(),
-                images: imageKeys,
-                selectedPrice,
-            };
-            setListings(prev => [newListing, ...prev]);
-        } catch (e) {
-            setError("Could not save images for the listing.");
-            console.error(e);
-        }
+    const handleSelectVariation = (variation: ListingVariation, selectedPrice: number) => {
+        // FIX: Add the `images` property from state to create a valid `Listing` object.
+        const newListing: Listing = {
+            ...variation,
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+            selectedPrice,
+            images: imageKeysForVariations,
+        };
+        setListings(prev => [newListing, ...prev]);
     };
 
     const handleDeleteListing = async (id: string) => {
@@ -153,6 +163,11 @@ const App: React.FC = () => {
             setIsPosting(false);
             setRefiningEbayListing(null);
         }
+    };
+    
+    const handleSaveRefinedListing = (refinedListing: Listing) => {
+        handleSaveListing(refinedListing);
+        handlePostEbay(refinedListing);
     };
 
     const handlePostTwitter = (listing: Listing) => {
@@ -227,7 +242,7 @@ const App: React.FC = () => {
                     >
                          {isLoading ? (
                             <>
-                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
@@ -268,7 +283,11 @@ const App: React.FC = () => {
                 <VariationSelectionModal 
                     variations={variations}
                     onSelect={handleSelectVariation}
-                    onClose={() => setShowVariationModal(false)}
+                    // FIX: Clear the temporary image keys when the modal is closed.
+                    onClose={() => {
+                        setShowVariationModal(false);
+                        setImageKeysForVariations([]);
+                    }}
                 />
             )}
             {editingListing && (
@@ -281,7 +300,7 @@ const App: React.FC = () => {
             {refiningEbayListing && (
                  <EbayRefinementModal 
                     listing={refiningEbayListing}
-                    onPost={() => handlePostEbay(refiningEbayListing)}
+                    onPost={handleSaveRefinedListing}
                     onClose={() => setRefiningEbayListing(null)}
                     isPosting={isPosting}
                     apiKeys={apiKeys}

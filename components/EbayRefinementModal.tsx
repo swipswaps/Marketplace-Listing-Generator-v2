@@ -51,9 +51,12 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
       const fetchedConditions = await getCategoryConditions(selectedCategoryId, apiKeys);
       setConditions(fetchedConditions);
       if (fetchedConditions.length > 0) {
-        // Try to find a default like "Used" or "Pre-owned" (IDs 2000-3000), otherwise pick the first one.
-        const defaultCondition = fetchedConditions.find(c => ['2000', '2500', '3000'].includes(c.conditionId)) || fetchedConditions[0];
-        setSelectedConditionId(defaultCondition.conditionId);
+        // Try to find a sensible default like "New" or "Used", otherwise pick the first one.
+        const preferredConditionIds = ['1000', '3000', '2500', '2000']; // New, Used, Seller Refurbished, Certified Refurbished
+        const defaultCondition = fetchedConditions.find(c => preferredConditionIds.includes(c.conditionId)) || fetchedConditions[0];
+        if (defaultCondition) {
+            setSelectedConditionId(defaultCondition.conditionId);
+        }
       }
     } catch (e: any) {
        toast.error(`Failed to fetch item conditions: ${e.message}`);
@@ -89,10 +92,9 @@ export const EbayRefinementModal: React.FC<EbayRefinementModalProps> = ({ listin
   };
   
   const formatCategoryPath = (suggestion: EbayCategorySuggestion) => {
-      const path = (suggestion.categoryTreeNodeAncestors || [])
-          .map(a => a.categoryName)
-          .join(' > ');
-      return `${path} > ${suggestion.category.categoryName}`;
+      const ancestorNames = (suggestion.categoryTreeNodeAncestors || []).map(a => a.categoryName);
+      const allParts = [...ancestorNames, suggestion.category.categoryName];
+      return allParts.join(' > ');
   }
 
   return (
